@@ -1,0 +1,18 @@
+const Map<String, String> topicLabels = {
+  'amorpropio': 'Self-Love',
+  'identidad': 'Identity',
+  'fortaleza': 'Strength',
+  'proposito': 'Purpose',
+  'paz': 'Peace',
+  'sanidad': 'Healing',
+  'familia': 'Family',
+  'provision': 'Provision',
+  'negocios': 'Business',
+  'gratitud': 'Gratitude',
+  'fe': 'Faith',
+  'valentia': 'Courage',
+  'restauracion': 'Restoration',
+  'liderazgo': 'Leadership',
+  'batallas': 'Battles',
+  'disciplina': 'Discipline',
+};
