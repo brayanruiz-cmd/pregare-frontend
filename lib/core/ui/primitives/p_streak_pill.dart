@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../theme/tokens.dart';
 
+import 'p_interactive.dart';
+
 /// PStreakPill — Punto de 7px + número, radio 18, glassFill con borde glassStroke.
 /// Sin iconos, sin fuego, sin confeti. La racha se nombra con sobriedad.
 class PStreakPill extends StatelessWidget {
@@ -15,12 +17,28 @@ class PStreakPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pillWidget = Container(
+    if (onTap == null) {
+      return _buildPill(isHovered: false);
+    }
+
+    return PInteractive(
+      onTap: onTap,
+      tooltip: 'Ver racha de crecimiento',
+      builder: (context, isHovered, isPressed) => _buildPill(isHovered: isHovered),
+    );
+  }
+
+  Widget _buildPill({required bool isHovered}) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: PColors.glassFill,
+        color: isHovered ? PColors.glassFill.withValues(alpha: 0.22) : PColors.glassFill,
         borderRadius: BorderRadius.circular(PRadius.pill),
-        border: Border.all(color: PColors.glassStroke, width: 1.0),
+        border: Border.all(
+          color: isHovered ? PColors.bone50 : PColors.glassStroke,
+          width: 1.0,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -42,15 +60,6 @@ class PStreakPill extends StatelessWidget {
         ],
       ),
     );
-
-    if (onTap != null) {
-      return GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: pillWidget,
-      );
-    }
-
-    return pillWidget;
   }
 }
+

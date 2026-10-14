@@ -125,4 +125,11 @@ class OnboardingProvider extends ChangeNotifier {
     }
     return null;
   }
+
+  Future<void> clearUserData() async {
+    _name = '';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyName);
+    notifyListeners();
+  }
 }

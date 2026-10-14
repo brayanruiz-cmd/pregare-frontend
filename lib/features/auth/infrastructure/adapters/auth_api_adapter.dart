@@ -89,7 +89,14 @@ class AuthApiAdapter implements AuthRepository {
   @override
   Future<void> logout() async {
     try {
-      await httpClient.delete('/auth/logout');
+      final prefs = await SharedPreferences.getInstance();
+      final refreshToken = prefs.getString(_refreshTokenKey);
+      await httpClient.post(
+        '/auth/logout',
+        data: {'refreshToken': refreshToken ?? ''},
+      );
+    } catch (_) {
+      // Ignore network/server errors so local session is always cleanly cleared
     } finally {
       httpClient.updateToken(null);
       try {

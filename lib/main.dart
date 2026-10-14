@@ -64,7 +64,7 @@ class PregareApp extends StatelessWidget {
           create: (_) => HomeProvider(repository: homeRepository),
         ),
         ChangeNotifierProvider(
-          create: (_) => BibleProvider(repository: bibleRepository),
+          create: (_) => BibleProvider(repository: bibleRepository)..loadHighlights(),
         ),
         ChangeNotifierProvider(
           create: (_) => DeclarationProvider(repository: declarationsRepository),

@@ -5,7 +5,6 @@ import '../../../../../core/theme/tokens.dart';
 import '../../../../../core/ui/organisms/main_shell.dart';
 import '../../../../../core/ui/primitives/primitives.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../onboarding/presentation/providers/onboarding_provider.dart';
 import '../../../home/domain/models/daily_verse.dart';
 import '../providers/home_provider.dart';
 
@@ -55,8 +54,7 @@ class _HomeWebLayoutState extends State<HomeWebLayout> {
 
   Widget _buildHeader(bool isEvening, BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final onboarding = context.watch<OnboardingProvider>();
-    final name = auth.currentSession?.user.name ?? onboarding.getDisplayName();
+    final name = auth.isAuthenticated ? auth.currentSession?.user.name : null;
 
     final greetingText = name != null && name.isNotEmpty
         ? (isEvening ? 'Good evening,\n$name.' : 'Good morning,\n$name.')

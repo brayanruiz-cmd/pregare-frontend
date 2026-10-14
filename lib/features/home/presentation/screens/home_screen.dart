@@ -5,7 +5,6 @@ import '../../../../core/theme/tokens.dart';
 import '../../../../core/ui/organisms/main_shell.dart';
 import '../../../../core/ui/primitives/primitives.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../onboarding/presentation/providers/onboarding_provider.dart';
 import '../../../streaks/presentation/providers/streaks_provider.dart';
 import '../../../notifications/presentation/screens/notification_settings_screen.dart';
 import '../../../topics/presentation/providers/topics_provider.dart';
@@ -104,12 +103,12 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         const PEyebrow('Could not load daily updates'),
         const SizedBox(height: 12),
-        GestureDetector(
+        PLink(
+          text: 'Try again',
+          textStyle: PType.uiStrong.copyWith(color: PColors.bone70),
+          trailingIcon: Icons.refresh_rounded,
+          iconSize: 13,
           onTap: () => home.loadHomeData(),
-          child: Text(
-            'Try again',
-            style: PType.uiStrong.copyWith(color: PColors.bone70),
-          ),
         ),
       ],
     );
@@ -146,16 +145,28 @@ class _TopBar extends StatelessWidget {
         const SizedBox(width: 14),
 
         // Notifications
-        GestureDetector(
+        PInteractive(
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => const NotificationSettingsScreen(),
             ),
           ),
-          child: const Icon(
-            Icons.notifications_none_rounded,
-            color: PColors.bone,
-            size: 22,
+          tooltip: 'Notificaciones',
+          builder: (context, isHovered, isPressed) => AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isHovered ? PColors.glassFill : Colors.transparent,
+              border: Border.all(
+                color: isHovered ? PColors.hairline : Colors.transparent,
+              ),
+            ),
+            child: Icon(
+              Icons.notifications_none_rounded,
+              color: isHovered ? PColors.bone : PColors.bone85,
+              size: 20,
+            ),
           ),
         ),
       ],
@@ -173,8 +184,7 @@ class _Greeting extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final onboarding = context.watch<OnboardingProvider>();
-    final name = auth.currentSession?.user.name ?? onboarding.getDisplayName();
+    final name = auth.isAuthenticated ? auth.currentSession?.user.name : null;
 
     final greetingText = name != null && name.isNotEmpty
         ? (isEvening ? 'Good evening,\n$name.' : 'Good morning,\n$name.')
@@ -272,42 +282,64 @@ class _MainSections extends StatelessWidget {
         const SizedBox(height: 14),
 
         // ── Tappable verse → opens today's Devotional ─────────────────
-        GestureDetector(
-          onTap: (verseText.isNotEmpty && devotionalDay != null)
-              ? () => openTodaysDevotional()
-              : null,
-          child: verseText.isNotEmpty
-              ? Text('"$verseText"', style: PType.scripture)
-              : Container(
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: PColors.glassFill,
-                    borderRadius: BorderRadius.circular(PRadius.chip),
-                  ),
-                ),
-        ),
-        const SizedBox(height: 10),
-
-        // ── Bible reference (tappable → goes to Bible) ────────────────
-        if (verseRef.isNotEmpty)
-          GestureDetector(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => BibleReaderScreen(
-                  bookId: bookId,
-                  bookName: bookName,
-                  initialChapter: chapter,
-                ),
+        if (verseText.isNotEmpty && devotionalDay != null)
+          PInteractive(
+            onTap: openTodaysDevotional,
+            tooltip: "Leer devocional de hoy",
+            pressedScale: 0.99,
+            pressedOpacity: 0.85,
+            builder: (context, isHovered, isPressed) => AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 140),
+              style: PType.scripture.copyWith(
+                color: isHovered ? PColors.bone : PColors.bone.withValues(alpha: 0.95),
               ),
+              child: Text('"$verseText"'),
             ),
-            child: Row(
-              children: [
-                Text(verseRef, style: PType.meta.copyWith(color: PColors.bone62)),
-                const SizedBox(width: 4),
-                Icon(Icons.arrow_outward_rounded, size: 11, color: PColors.bone45),
-              ],
+          )
+        else if (verseText.isNotEmpty)
+          Text('"$verseText"', style: PType.scripture)
+        else
+          Container(
+            height: 80,
+            decoration: BoxDecoration(
+              color: PColors.glassFill,
+              borderRadius: BorderRadius.circular(PRadius.chip),
             ),
           ),
+        const SizedBox(height: 12),
+
+        // ── Bible reference & Devotional links ────────────────────────
+        Wrap(
+          spacing: 16,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (verseRef.isNotEmpty)
+              PLink(
+                text: verseRef,
+                textStyle: PType.meta.copyWith(color: PColors.bone62),
+                trailingIcon: Icons.arrow_outward_rounded,
+                iconSize: 12,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => BibleReaderScreen(
+                      bookId: bookId,
+                      bookName: bookName,
+                      initialChapter: chapter,
+                    ),
+                  ),
+                ),
+              ),
+            if (devotionalDay != null)
+              PLink(
+                text: "Today's Devotional",
+                textStyle: PType.meta.copyWith(color: PColors.clay),
+                trailingIcon: Icons.arrow_forward_rounded,
+                iconSize: 11,
+                onTap: openTodaysDevotional,
+              ),
+          ],
+        ),
         const SizedBox(height: 36),
 
         // ── Action rows ───────────────────────────────────────────────
@@ -340,20 +372,30 @@ class _TopicsHeroCard extends StatelessWidget {
 
     // Empty state: no topics created yet
     if (topics.isEmpty) {
-      return GestureDetector(
+      return PInteractive(
         onTap: () => MainShell.setTab(context, 3),
-        child: Container(
+        hoverScale: 1.01,
+        pressedScale: 0.985,
+        tooltip: 'Explorar series de YouTube',
+        builder: (context, isHovered, isPressed) => Container(
           width: double.infinity,
           height: 190,
           decoration: BoxDecoration(
-            color: PColors.glassFill,
+            color: isHovered ? PColors.glassFill.withValues(alpha: 0.20) : PColors.glassFill,
             borderRadius: BorderRadius.circular(PRadius.card),
-            border: Border.all(color: PColors.glassStroke, width: 1.0),
+            border: Border.all(
+              color: isHovered ? PColors.bone50 : PColors.glassStroke,
+              width: 1.0,
+            ),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.ondemand_video_outlined, color: PColors.bone45, size: 36),
+              Icon(
+                Icons.ondemand_video_outlined,
+                color: isHovered ? PColors.bone : PColors.bone45,
+                size: 36,
+              ),
               const SizedBox(height: 12),
               Text(
                 'PREGARE · YouTube Series',
@@ -379,11 +421,14 @@ class _TopicsHeroCard extends StatelessWidget {
     final thumbnailUrl =
         videoId != null ? 'https://img.youtube.com/vi/$videoId/hqdefault.jpg' : null;
 
-    return GestureDetector(
+    return PInteractive(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TopicDetailScreen(topic: topic)),
       ),
-      child: ClipRRect(
+      hoverScale: 1.01,
+      pressedScale: 0.985,
+      tooltip: 'Ver video: ${topic.title}',
+      builder: (context, isHovered, isPressed) => ClipRRect(
         borderRadius: BorderRadius.circular(PRadius.card),
         child: Stack(
           children: [
@@ -408,8 +453,8 @@ class _TopicsHeroCard extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      PColors.ink.withValues(alpha: 0.2),
-                      PColors.ink.withValues(alpha: 0.80),
+                      PColors.ink.withValues(alpha: isHovered ? 0.12 : 0.20),
+                      PColors.ink.withValues(alpha: isHovered ? 0.72 : 0.80),
                     ],
                   ),
                 ),
@@ -502,17 +547,18 @@ class _TopicsHeroCard extends StatelessWidget {
             Positioned(
               right: 14,
               bottom: 14,
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: PColors.ink.withValues(alpha: 0.75),
+                  color: isHovered ? PColors.bone : PColors.ink.withValues(alpha: 0.75),
                   border: Border.all(color: PColors.bone, width: 1.2),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.play_arrow_rounded,
-                  color: PColors.bone,
+                  color: isHovered ? PColors.ink : PColors.bone,
                   size: 22,
                 ),
               ),
@@ -523,3 +569,4 @@ class _TopicsHeroCard extends StatelessWidget {
     );
   }
 }
+

@@ -4,8 +4,12 @@ import '../../../../../core/state/async_state.dart';
 import '../../../../../core/theme/tokens.dart';
 import '../../../../../core/ui/primitives/primitives.dart';
 import '../providers/bible_provider.dart';
+import '../../../../core/ui/molecules/auth_prompt_sheet.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/book.dart';
 import '../../domain/models/chapter.dart';
+import '../../domain/models/highlight_color_option.dart';
+import '../widgets/highlight_color_picker_sheet.dart';
 
 /// Web layout for Bible: book list on left, reader on right adhering to tokens.
 class BibleWebLayout extends StatefulWidget {
@@ -82,21 +86,15 @@ class _BibleWebLayoutState extends State<BibleWebLayout> {
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       children: [
                         _VersionChip(
-                          label: 'NIV',
-                          isSelected: bible.selectedVersion == 'NIV',
-                          onTap: () => bible.setVersion('NIV'),
-                        ),
-                        const SizedBox(width: 8),
-                        _VersionChip(
-                          label: 'ESV',
-                          isSelected: bible.selectedVersion == 'ESV',
-                          onTap: () => bible.setVersion('ESV'),
-                        ),
-                        const SizedBox(width: 8),
-                        _VersionChip(
                           label: 'KJV',
                           isSelected: bible.selectedVersion == 'KJV',
                           onTap: () => bible.setVersion('KJV'),
+                        ),
+                        const SizedBox(width: 8),
+                        _VersionChip(
+                          label: 'RVR1960',
+                          isSelected: bible.selectedVersion == 'RVR1960',
+                          onTap: () => bible.setVersion('RVR1960'),
                         ),
                       ],
                     ),
@@ -313,31 +311,82 @@ class _BibleChapterReader extends StatelessWidget {
         itemCount: verses.length,
         itemBuilder: (context, index) {
           final v = verses[index];
+          final isHighlighted = bible.isVerseHighlighted(book.id, bible.selectedChapter, v.number);
+          final colorHex = bible.getVerseHighlightColor(book.id, bible.selectedChapter, v.number);
+          final colorOption = HighlightColorOption.fromHex(colorHex);
+
           return Padding(
-            padding: const EdgeInsets.only(bottom: 18),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 32,
-                  child: Text(
-                    '${v.number}',
-                    style: PType.meta.copyWith(
-                      color: PColors.bone45,
-                      fontWeight: FontWeight.w600,
-                    ),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () {
+                  final auth = context.read<AuthProvider>();
+                  if (!auth.isAuthenticated) {
+                    AuthPromptSheet.show(
+                      context,
+                      isLoginOnly: false,
+                      onSuccess: () {
+                        HighlightColorPickerSheet.show(
+                          context,
+                          bookId: book.id,
+                          bookName: book.name,
+                          chapter: bible.selectedChapter,
+                          verse: v,
+                        );
+                      },
+                    );
+                  } else {
+                    HighlightColorPickerSheet.show(
+                      context,
+                      bookId: book.id,
+                      bookName: book.name,
+                      chapter: bible.selectedChapter,
+                      verse: v,
+                    );
+                  }
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: isHighlighted
+                      ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
+                      : const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isHighlighted
+                        ? colorOption.fill.withValues(alpha: 0.22)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(PRadius.tile),
+                    border: isHighlighted
+                        ? Border(left: BorderSide(color: colorOption.accent, width: 3.5))
+                        : null,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 32,
+                        child: Text(
+                          '${v.number}',
+                          style: PType.meta.copyWith(
+                            color: isHighlighted ? colorOption.accent : PColors.bone45,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          v.text,
+                          style: PType.scripture.copyWith(
+                            fontSize: 18,
+                            height: 1.65,
+                            color: isHighlighted ? PColors.bone : PColors.bone85,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Expanded(
-                  child: Text(
-                    v.text,
-                    style: PType.scripture.copyWith(
-                      fontSize: 18,
-                      height: 1.65,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           );
         },

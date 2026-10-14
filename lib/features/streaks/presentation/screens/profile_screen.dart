@@ -11,8 +11,7 @@ import '../../domain/models/streak_activity.dart';
 import '../../domain/models/user_badge_model.dart';
 import '../providers/streaks_provider.dart';
 import '../../../admin/presentation/screens/admin_dashboard_screen.dart';
-import '../../../home/presentation/providers/home_provider.dart';
-import '../../../topics/presentation/providers/topics_provider.dart';
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantalla 23 — Profile / You
@@ -28,12 +27,14 @@ class ProfileScreen extends StatelessWidget {
     final streaks = context.watch<StreaksProvider>();
     final streak = streaks.currentStreak;
 
-    final rawName =
-        auth.currentSession?.user.name ?? onboarding.getDisplayName();
+    final isAuthenticated = auth.isAuthenticated;
+    final rawName = isAuthenticated ? auth.currentSession?.user.name : null;
     final name =
         (rawName != null && rawName.isNotEmpty) ? rawName : 'Invitado';
-    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'P';
-    final isAuthenticated = auth.isAuthenticated;
+    final initial =
+        (isAuthenticated && rawName != null && rawName.isNotEmpty)
+            ? rawName[0].toUpperCase()
+            : 'P';
 
     return PScreen(
       background: const PScreenBackground.ink(),
@@ -250,12 +251,14 @@ class ProfileScreen extends StatelessWidget {
     );
 
     if (confirmed == true && context.mounted) {
+      final messenger = ScaffoldMessenger.of(context);
       await context.read<AuthProvider>().logout();
       if (context.mounted) {
-        context.read<HomeProvider>().loadHomeData();
-        context.read<TopicsProvider>().loadTopics();
-        context.read<StreaksProvider>().loadStreak();
-        ScaffoldMessenger.of(context).showSnackBar(
+        await context.read<OnboardingProvider>().clearUserData();
+      }
+      if (context.mounted) {
+        MainShell.reloadAll(context);
+        messenger.showSnackBar(
           const SnackBar(
             content: Text('Logged out successfully'),
             backgroundColor: PColors.ink,

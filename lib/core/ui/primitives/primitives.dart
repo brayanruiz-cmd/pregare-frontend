@@ -6,4 +6,5 @@ export 'p_list_row.dart';
 export 'p_screen.dart';
 export 'p_streak_pill.dart';
 export 'p_brand_logo.dart';
+export 'p_interactive.dart';
 export 'p_youtube_preview_card.dart';

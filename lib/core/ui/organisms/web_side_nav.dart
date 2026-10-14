@@ -123,20 +123,26 @@ class _WebSideNavState extends State<WebSideNav>
       child: Row(
         children: [
           // Toggle button — circular
-          GestureDetector(
+          PInteractive(
             onTap: _toggle,
-            child: Container(
+            tooltip: _expanded ? 'Colapsar barra' : 'Expandir barra',
+            builder: (context, isHovered, isPressed) => AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: PColors.glassFill,
+                color: isHovered
+                    ? PColors.glassFill.withValues(alpha: 0.25)
+                    : PColors.glassFill,
                 shape: BoxShape.circle,
-                border: Border.all(color: PColors.hairline),
+                border: Border.all(
+                  color: isHovered ? PColors.bone50 : PColors.hairline,
+                ),
               ),
               child: Icon(
                 _expanded ? Icons.chevron_left : Icons.chevron_right,
                 size: 18,
-                color: PColors.bone,
+                color: isHovered ? PColors.bone : PColors.bone85,
               ),
             ),
           ),
@@ -170,16 +176,24 @@ class _WebSideNavState extends State<WebSideNav>
         message: _expanded ? '' : item.label,
         preferBelow: false,
         waitDuration: const Duration(milliseconds: 500),
-        child: GestureDetector(
+        child: PInteractive(
           onTap: () => widget.onTap(index),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
+          pressedScale: 0.99,
+          pressedOpacity: 0.85,
+          builder: (context, isHovered, isPressed) => AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
             height: 46,
             decoration: BoxDecoration(
-              color: isActive ? PColors.glassFill : Colors.transparent,
+              color: isActive
+                  ? PColors.glassFill
+                  : (isHovered
+                      ? PColors.glassFill.withValues(alpha: 0.12)
+                      : Colors.transparent),
               borderRadius: BorderRadius.circular(PRadius.tile),
-              border: isActive ? Border.all(color: PColors.hairline) : null,
+              border: (isActive || isHovered)
+                  ? Border.all(color: isActive ? PColors.hairline : PColors.glassStroke)
+                  : null,
             ),
             child: Row(
               children: [
@@ -187,7 +201,7 @@ class _WebSideNavState extends State<WebSideNav>
                 Icon(
                   isActive ? item.activeIcon : item.icon,
                   size: 19,
-                  color: isActive ? PColors.bone : PColors.bone45,
+                  color: (isActive || isHovered) ? PColors.bone : PColors.bone45,
                 ),
                 if (_expanded && _widthAnim.value > 110) ...[
                   const SizedBox(width: 12),
@@ -199,7 +213,7 @@ class _WebSideNavState extends State<WebSideNav>
                       style: PType.uiStrong.copyWith(
                         fontSize: 13,
                         fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                        color: isActive ? PColors.bone : PColors.bone62,
+                        color: (isActive || isHovered) ? PColors.bone : PColors.bone62,
                       ),
                     ),
                   ),
@@ -217,22 +231,28 @@ class _WebSideNavState extends State<WebSideNav>
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Tooltip(
         message: _expanded ? '' : 'Settings',
-        child: GestureDetector(
+        child: PInteractive(
           onTap: () => widget.onTap(4),
-          child: Container(
+          pressedScale: 0.99,
+          builder: (context, isHovered, isPressed) => AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
             height: 44,
             decoration: BoxDecoration(
-              color: PColors.glassFill,
+              color: isHovered
+                  ? PColors.glassFill.withValues(alpha: 0.22)
+                  : PColors.glassFill,
               borderRadius: BorderRadius.circular(PRadius.tile),
-              border: Border.all(color: PColors.hairline),
+              border: Border.all(
+                color: isHovered ? PColors.bone50 : PColors.hairline,
+              ),
             ),
             child: Row(
               children: [
                 const SizedBox(width: 14),
-                const Icon(
+                Icon(
                   Icons.settings_outlined,
                   size: 18,
-                  color: PColors.bone45,
+                  color: isHovered ? PColors.bone : PColors.bone45,
                 ),
                 if (_expanded && _widthAnim.value > 120) ...[
                   const SizedBox(width: 10),
@@ -243,7 +263,7 @@ class _WebSideNavState extends State<WebSideNav>
                       'Settings',
                       style: PType.meta.copyWith(
                         fontSize: 12,
-                        color: PColors.bone62,
+                        color: isHovered ? PColors.bone : PColors.bone62,
                       ),
                     ),
                   ),
@@ -255,6 +275,7 @@ class _WebSideNavState extends State<WebSideNav>
       ),
     );
   }
+
 }
 
 class _NavItem {

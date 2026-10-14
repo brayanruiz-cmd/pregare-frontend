@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/state/async_state.dart';
-import '../../../../core/theme/app_breakpoints.dart';
 import '../../../../core/theme/tokens.dart';
 import '../../../../core/ui/organisms/main_shell.dart';
 import '../../../../core/ui/primitives/primitives.dart';
 import '../../domain/models/topic_labels.dart';
 import '../providers/declaration_provider.dart';
-import 'declarations_web_layout.dart';
 
 // ─── Local item model ─────────────────────────────────────────────────────────
 class DeclarationItem {
@@ -97,12 +95,34 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (AppBreakpoints.isDesktop(context)) {
-      return const DeclarationsWebLayout();
-    }
-
     final provider = context.watch<DeclarationProvider>();
     final items = _getItems(provider);
+
+    if (items.isEmpty) {
+      if (provider.declarations is AsyncLoading) {
+        return const Scaffold(
+          backgroundColor: PColors.inkDeep,
+          body: Center(
+            child: CircularProgressIndicator(color: PColors.bone),
+          ),
+        );
+      }
+      return PScreen(
+        background: const PScreenBackground.photo('assets/photo-dawn.jpg', scrim: PScrims.home),
+        hasNav: false,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const PEyebrow('No declarations available'),
+              const SizedBox(height: 16),
+              _PrimaryButton(label: 'Retry', onTap: () => provider.loadDeclarations()),
+            ],
+          ),
+        ),
+      );
+    }
+
     final safeIndex = _currentIndex.clamp(0, items.length - 1);
 
     if (!_hasBegun) {
@@ -130,6 +150,7 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
   }
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen 14 — Daily introduction (Background: photo-dawn · Close button to exit)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,75 +170,90 @@ class _IntroView extends StatelessWidget {
       background: const PScreenBackground.photo('assets/photo-dawn.jpg', scrim: PScrims.home),
       hasNav: false,
       padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 12),
-
-          // ── Top Bar: Close button (✕) + Centered Date ──────────────────────
-          Row(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                onTap: onClose,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: PColors.glassFill,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: PColors.hairline),
+              const SizedBox(height: 12),
+
+              // ── Top Bar: Close button (✕) + Centered Date ──────────────────
+              Row(
+                children: [
+                  PInteractive(
+                    onTap: onClose,
+                    tooltip: 'Cerrar declaraciones',
+                    builder: (context, isHovered, isPressed) => Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: isHovered
+                            ? PColors.glassFill.withValues(alpha: 0.28)
+                            : PColors.glassFill,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isHovered ? PColors.bone50 : PColors.hairline,
+                        ),
+                      ),
+                      child: const Icon(Icons.close_rounded, color: PColors.bone, size: 20),
+                    ),
                   ),
-                  child: const Icon(Icons.close_rounded, color: PColors.bone, size: 20),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        dateLabel,
+                        style: PType.eyebrow,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 36), // Visual balance
+                ],
+              ),
+
+              const Spacer(),
+
+              // ── App Logo Mark (Brand Logo) ───────────────────────────────────
+              const Center(
+                child: PBrandLogo(
+                  height: 56,
+                  isLight: true,
                 ),
               ),
-              Expanded(
-                child: Center(
-                  child: Text(
-                    dateLabel,
-                    style: PType.eyebrow,
-                  ),
-                ),
+              const SizedBox(height: 28),
+
+              // ── Serif Heading ──────────────────────────────────────────────────
+              Text(
+                'Today I declare',
+                style: PType.display,
               ),
-              const SizedBox(width: 36), // Visual balance
+              const SizedBox(height: 16),
+              Text(
+                'Four declarations, drawn from Scripture and written for you. Take them slowly.',
+                style: PType.body,
+              ),
+
+              const Spacer(),
+
+              // ── Gender filter pills ──────────────────────────────────────────
+              const _GenderFilterPills(),
+              const SizedBox(height: 20),
+
+              // ── Progress indicator (4 empty segments) ──────────────────────────
+              Center(child: _ProgressBar(currentIndex: -1, total: 4)),
+              const SizedBox(height: 28),
+
+              // ── Begin Button ───────────────────────────────────────────────────
+              _PrimaryButton(label: 'Begin', onTap: onBegin),
+              const SizedBox(height: 36),
             ],
           ),
-
-          const Spacer(),
-
-          // ── App Logo Mark (Brand Logo) ───────────────────────────────────
-          const Center(
-            child: PBrandLogo(
-              height: 56,
-              isLight: true,
-            ),
-          ),
-          const SizedBox(height: 28),
-
-          // ── Serif Heading ──────────────────────────────────────────────────
-          Text(
-            'Today I declare',
-            style: PType.display,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Four declarations, drawn from Scripture and written for you. Take them slowly.',
-            style: PType.body,
-          ),
-
-          const Spacer(),
-
-          // ── Progress indicator (4 empty segments) ──────────────────────────
-          _ProgressBar(currentIndex: -1, total: 4),
-          const SizedBox(height: 32),
-
-          // ── Begin Button ───────────────────────────────────────────────────
-          _PrimaryButton(label: 'Begin', onTap: onBegin),
-          const SizedBox(height: 36),
-        ],
+        ),
       ),
     );
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screens 15 + 16 — Declaration flip card
@@ -248,76 +284,86 @@ class _CardExperienceView extends StatelessWidget {
       background: const PScreenBackground.photo('assets/photo-declarations.jpg', scrim: PScrims.hero),
       hasNav: false,
       padding: EdgeInsets.zero,
-      body: Column(
-        children: [
-          const SizedBox(height: 12),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
 
-          // ── Top bar: close · progress · counter ───────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: onClose,
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: PColors.glassFill,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: PColors.hairline),
+              // ── Top bar: close · progress · counter ───────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
+                child: Row(
+                  children: [
+                    PInteractive(
+                      onTap: onClose,
+                      tooltip: 'Cerrar declaraciones',
+                      builder: (context, isHovered, isPressed) => Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: isHovered
+                              ? PColors.glassFill.withValues(alpha: 0.28)
+                              : PColors.glassFill,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isHovered ? PColors.bone50 : PColors.hairline,
+                          ),
+                        ),
+                        child: const Icon(Icons.close_rounded, color: PColors.bone, size: 20),
+                      ),
                     ),
-                    child: const Icon(Icons.close_rounded, color: PColors.bone, size: 20),
-                  ),
+
+                    const Spacer(),
+
+                    _ProgressBar(currentIndex: currentIndex, total: total),
+
+                    const Spacer(),
+
+                    Text(
+                      '0${currentIndex + 1} / 0$total',
+                      style: PType.counter,
+                    ),
+                  ],
                 ),
-
-                const Spacer(),
-
-                _ProgressBar(currentIndex: currentIndex, total: total),
-
-                const Spacer(),
-
-                Text(
-                  '0${currentIndex + 1} / 0$total',
-                  style: PType.counter,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // ── 3D Hero Flip Card ──────────────────────────────────────────────
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
-              child: PFlipCard(
-                scriptureText: item.scriptureText,
-                scriptureRef: item.scriptureRef,
-                declarationText: item.declarationText,
-                topic: item.topic,
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-          // ── Bottom controls: share + next button ───────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
-            child: Row(
-              children: [
-                _ShareIconButton(onTap: onShare),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _PrimaryButton(
-                    label: isLast ? 'Complete daily declarations' : 'Next declaration',
-                    onTap: onNext,
+              // ── 3D Hero Flip Card ──────────────────────────────────────────────
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
+                  child: PFlipCard(
+                    scriptureText: item.scriptureText,
+                    scriptureRef: item.scriptureRef,
+                    declarationText: item.declarationText,
+                    topic: item.topic,
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Bottom controls: share + next button ───────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
+                child: Row(
+                  children: [
+                    _ShareIconButton(onTap: onShare),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _PrimaryButton(
+                        label: isLast ? 'Complete daily declarations' : 'Next declaration',
+                        onTap: onNext,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
           ),
-          const SizedBox(height: 24),
-        ],
+        ),
       ),
     );
   }
@@ -343,80 +389,145 @@ class _CompletedView extends StatelessWidget {
       background: const PScreenBackground.photo('assets/photo-declarations.jpg', scrim: PScrims.home),
       hasNav: false,
       padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 12),
-
-          // ── Top Bar: Close button (✕) ──────────────────────────────────────
-          Row(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                onTap: onClose,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: PColors.glassFill,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: PColors.hairline),
+              const SizedBox(height: 12),
+
+              // ── Top Bar: Close button (✕) ──────────────────────────────────────
+              Row(
+                children: [
+                  PInteractive(
+                    onTap: onClose,
+                    tooltip: 'Volver al inicio',
+                    builder: (context, isHovered, isPressed) => Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: isHovered
+                            ? PColors.glassFill.withValues(alpha: 0.28)
+                            : PColors.glassFill,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isHovered ? PColors.bone50 : PColors.hairline,
+                        ),
+                      ),
+                      child: const Icon(Icons.close_rounded, color: PColors.bone, size: 20),
+                    ),
                   ),
-                  child: const Icon(Icons.close_rounded, color: PColors.bone, size: 20),
+                  const Spacer(),
+                  const PEyebrow('Today\'s declarations'),
+                  const Spacer(),
+                  const SizedBox(width: 36),
+                ],
+              ),
+
+              const Spacer(),
+
+              // ── App Logo Mark (Brand Logo) ───────────────────────────────────
+              const Center(
+                child: PBrandLogo(
+                  height: 50,
+                  isLight: true,
                 ),
               ),
+              const SizedBox(height: 24),
+
+              // Heading
+              Text(
+                'You\'ve spoken today\'s four declarations.',
+                style: PType.display,
+              ),
+              const SizedBox(height: 16),
+
+              // Subtitle
+              Text(
+                'Four new ones arrive tomorrow morning. Nothing is lost if you miss a day.',
+                style: PType.body,
+              ),
+
               const Spacer(),
-              const PEyebrow('Today\'s declarations'),
-              const Spacer(),
-              const SizedBox(width: 36),
+
+              // Primary CTA
+              _PrimaryButton(label: 'Share today\'s declarations', onTap: onShareTap),
+              const SizedBox(height: 14),
+
+              // Secondary link
+              Center(
+                child: PLink(
+                  text: 'Read them again',
+                  textStyle: PType.uiStrong.copyWith(color: PColors.bone70),
+                  showIcon: false,
+                  onTap: onRestart,
+                ),
+              ),
+              const SizedBox(height: 36),
             ],
           ),
-
-          const Spacer(),
-
-          // ── App Logo Mark (Brand Logo) ───────────────────────────────────
-          const Center(
-            child: PBrandLogo(
-              height: 50,
-              isLight: true,
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Heading
-          Text(
-            'You\'ve spoken today\'s four declarations.',
-            style: PType.display,
-          ),
-          const SizedBox(height: 16),
-
-          // Subtitle
-          Text(
-            'Four new ones arrive tomorrow morning. Nothing is lost if you miss a day.',
-            style: PType.body,
-          ),
-
-          const Spacer(),
-
-          // Primary CTA
-          _PrimaryButton(label: 'Share today\'s declarations', onTap: onShareTap),
-          const SizedBox(height: 14),
-
-          // Secondary link
-          Center(
-            child: GestureDetector(
-              onTap: onRestart,
-              child: Text(
-                'Read them again',
-                style: PType.uiStrong.copyWith(color: PColors.bone70),
-              ),
-            ),
-          ),
-          const SizedBox(height: 36),
-        ],
+        ),
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gender Filter Pills (Web & Mobile)
+// ─────────────────────────────────────────────────────────────────────────────
+class _GenderFilterPills extends StatelessWidget {
+  const _GenderFilterPills();
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<DeclarationProvider>();
+    final current = provider.selectedGender;
+
+    Widget buildPill(String label, String value) {
+      final isSelected = current == value;
+      return PInteractive(
+        onTap: () {
+          provider.setGender(value);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? PColors.glassFill.withValues(alpha: 0.28)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(PRadius.chip),
+            border: Border.all(
+              color: isSelected ? PColors.bone : PColors.hairline,
+              width: 1.0,
+            ),
+          ),
+          child: Text(
+            label,
+            style: PType.meta.copyWith(
+              color: isSelected ? PColors.bone : PColors.bone45,
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        buildPill('TODAS', 'all'),
+        const SizedBox(width: 8),
+        buildPill('HOMBRES', 'hombre'),
+        const SizedBox(width: 8),
+        buildPill('MUJERES', 'mujer'),
+      ],
+    );
+  }
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen 17 — Share modal
@@ -622,7 +733,7 @@ class _ThemeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isActive = selected == index;
-    return GestureDetector(
+    return PInteractive(
       onTap: () => onTap(index),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -683,15 +794,23 @@ class _ShareIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PInteractive(
       onTap: onTap,
-      child: Container(
+      tooltip: 'Compartir declaración',
+      pressedScale: 0.96,
+      builder: (context, isHovered, isPressed) => AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
         width: 52,
         height: 52,
         decoration: BoxDecoration(
-          color: PColors.glassFill,
+          color: isHovered
+              ? PColors.glassFill.withValues(alpha: 0.28)
+              : PColors.glassFill,
           borderRadius: BorderRadius.circular(PRadius.tile),
-          border: Border.all(color: PColors.glassStroke, width: 1.0),
+          border: Border.all(
+            color: isHovered ? PColors.bone50 : PColors.glassStroke,
+            width: 1.0,
+          ),
         ),
         child: const Icon(Icons.ios_share_rounded, color: PColors.bone, size: 20),
       ),
@@ -731,8 +850,10 @@ class _PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PInteractive(
       onTap: onTap,
+      pressedScale: 0.985,
+      hoverScale: 1.01,
       child: Container(
         width: double.infinity,
         height: 52,
@@ -749,3 +870,4 @@ class _PrimaryButton extends StatelessWidget {
     );
   }
 }
+

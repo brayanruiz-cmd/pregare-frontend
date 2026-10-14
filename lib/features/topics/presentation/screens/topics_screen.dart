@@ -62,33 +62,27 @@ class _TopicsScreenState extends State<TopicsScreen> {
         currentIndex: 3,
         onTap: (i) => MainShell.setTab(context, i),
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await Future.wait([
-            context.read<TopicsProvider>().loadTopics(),
-            context.read<DevotionalsProvider>().loadDevotionals(),
-          ]);
-        },
-        color: PColors.bone,
-        backgroundColor: PColors.ink,
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const SizedBox(height: 16),
-            Text('Explore', style: PType.display),
-            const SizedBox(height: 20),
-            _ExploreTabRow(
-              activeIndex: _activeTab,
-              onTap: (i) => setState(() => _activeTab = i),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 16),
+          Text('Explore', style: PType.display),
+          const SizedBox(height: 20),
+          _ExploreTabRow(
+            activeIndex: _activeTab,
+            onTap: (i) => setState(() => _activeTab = i),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: IndexedStack(
+              index: _activeTab,
+              children: [
+                _TopicsContent(onTopicTap: _openTopicDetail),
+                _DevotionalsContent(onDevotionalTap: _openDevotionalDetail),
+              ],
             ),
-            const SizedBox(height: 28),
-            if (_activeTab == 0)
-              _TopicsContent(onTopicTap: _openTopicDetail)
-            else
-              _DevotionalsContent(onDevotionalTap: _openDevotionalDetail),
-            const SizedBox(height: PSpace.navClearance),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -108,26 +102,33 @@ class _ExploreTabRow extends StatelessWidget {
         final isActive = e.key == activeIndex;
         return Padding(
           padding: EdgeInsets.only(right: e.key < labels.length - 1 ? 24 : 0),
-          child: GestureDetector(
+          child: PInteractive(
             onTap: () => onTap(e.key),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  e.value,
-                  style: PType.uiStrong.copyWith(
-                    color: isActive ? PColors.bone : PColors.bone45,
-                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+            pressedScale: 0.98,
+            builder: (context, isHovered, isPressed) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    e.value,
+                    style: PType.uiStrong.copyWith(
+                      color: isActive
+                          ? PColors.bone
+                          : (isHovered ? PColors.bone85 : PColors.bone45),
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  height: 1.5,
-                  width: 42,
-                  color: isActive ? PColors.bone : Colors.transparent,
-                ),
-              ],
-            ),
+                  const SizedBox(height: 6),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    height: 1.5,
+                    width: isActive ? 42 : 0,
+                    color: isActive ? PColors.bone : Colors.transparent,
+                  ),
+                ],
+              );
+            },
           ),
         );
       }).toList(),
@@ -171,70 +172,78 @@ class _TopicsContent extends StatelessWidget {
 
     final featured = topics.first;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── Featured topic card ───────────────────────────────────────────
-        GestureDetector(
-          onTap: () => onTopicTap(featured),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(PRadius.tile),
-            child: Stack(
-              children: [
-                SizedBox(
-                  height: 180,
-                  width: double.infinity,
-                  child: Image.asset(
-                    'assets/photo-topics.jpg',
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Container(color: PColors.inkDeep),
-                  ),
-                ),
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(gradient: PScrims.home),
-                  ),
-                ),
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 20,
-                  top: 20,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const PEyebrow('This week'),
-                      Column(
+    return RefreshIndicator(
+      onRefresh: () => context.read<TopicsProvider>().loadTopics(),
+      color: PColors.bone,
+      backgroundColor: PColors.ink,
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: PSpace.navClearance),
+        children: [
+          // ── Featured topic card ───────────────────────────────────────────
+          PInteractive(
+            onTap: () => onTopicTap(featured),
+            pressedScale: 0.99,
+            builder: (context, isHovered, isPressed) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(PRadius.tile),
+                child: Stack(
+                  children: [
+                    SizedBox(
+                      height: 180,
+                      width: double.infinity,
+                      child: Image.asset(
+                        'assets/photo-topics.jpg',
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            Container(color: PColors.inkDeep),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(gradient: PScrims.home),
+                      ),
+                    ),
+                    Positioned(
+                      left: 20,
+                      right: 20,
+                      bottom: 20,
+                      top: 20,
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(featured.title,
-                              style: PType.display.copyWith(fontSize: 28)),
-                          const SizedBox(height: 6),
-                          Text(
-                            featured.description.length > 80
-                                ? '${featured.description.substring(0, 80).trim()}…'
-                                : featured.description,
-                            style: PType.body.copyWith(fontSize: 13),
+                          const PEyebrow('This week'),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(featured.title,
+                                  style: PType.display.copyWith(fontSize: 28)),
+                              const SizedBox(height: 6),
+                              Text(
+                                featured.description.length > 80
+                                    ? '${featured.description.substring(0, 80).trim()}…'
+                                    : featured.description,
+                                style: PType.body.copyWith(fontSize: 13),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
-        ),
-        const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-        // ── Numbered topic list ───────────────────────────────────────────
-        ...topics.asMap().entries.map((e) {
-          final idx = (e.key + 1).toString().padLeft(2, '0');
-          return _topicRow(idx, e.value);
-        }),
-      ],
+          // ── Numbered topic list ───────────────────────────────────────────
+          ...topics.asMap().entries.map((e) {
+            final idx = (e.key + 1).toString().padLeft(2, '0');
+            return _topicRow(idx, e.value);
+          }),
+        ],
+      ),
     );
   }
 
@@ -255,7 +264,7 @@ class _TopicsContent extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Devotionals tab — loaded from DevotionalsProvider
-// Only TODAY's devotional is tappable; past/future are locked.
+// Virtualized with SliverList for 0ms instantaneous tab switching
 // ─────────────────────────────────────────────────────────────────────────────
 class _DevotionalsContent extends StatelessWidget {
   const _DevotionalsContent({required this.onDevotionalTap});
@@ -265,7 +274,6 @@ class _DevotionalsContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<DevotionalsProvider>();
     final devotionals = provider.currentDevotionals;
-    // todayDayNumber = the day number of today's devotional from home data
     final homeState = context.watch<HomeProvider>().state;
     final todayDayNumber = homeState is AsyncData
         ? (homeState as AsyncData<dynamic>).data is HomeData
@@ -297,7 +305,6 @@ class _DevotionalsContent extends StatelessWidget {
       return const Center(child: PEyebrow('No devotionals available'));
     }
 
-    // Today's devotional = the one whose day matches todayDayNumber
     final today = todayDayNumber != null
         ? devotionals.firstWhere(
             (d) => d.day == todayDayNumber,
@@ -307,111 +314,137 @@ class _DevotionalsContent extends StatelessWidget {
 
     final others = devotionals.where((d) => d.day != today.day).toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── Today's devotional ───────────────────────────────────────
-        GestureDetector(
-          onTap: () => onDevotionalTap(today),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(PRadius.tile),
-            child: Stack(
+    return RefreshIndicator(
+      onRefresh: () => context.read<DevotionalsProvider>().loadDevotionals(),
+      color: PColors.bone,
+      backgroundColor: PColors.ink,
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  height: 180,
-                  width: double.infinity,
-                  child: Image.asset(
-                    'assets/photo-devotionals.jpg',
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Container(color: PColors.inkDeep),
-                  ),
-                ),
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(gradient: PScrims.home),
-                  ),
-                ),
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 20,
-                  top: 20,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                // ── Today's devotional card ─────────────────────────────────
+                PInteractive(
+                  onTap: () => onDevotionalTap(today),
+                  pressedScale: 0.99,
+                  builder: (context, isHovered, isPressed) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(PRadius.tile),
+                      child: Stack(
                         children: [
-                          const PEyebrow("Today's devotional"),
-                          if (provider.isCompleted(today))
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF2D6A4F),
-                                borderRadius: BorderRadius.circular(PRadius.pill),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.check_rounded, color: PColors.bone, size: 12),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Completed',
-                                    style: PType.meta.copyWith(
-                                      color: PColors.bone,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                          SizedBox(
+                            height: 180,
+                            width: double.infinity,
+                            child: Image.asset(
+                              'assets/photo-devotionals.jpg',
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(color: PColors.inkDeep),
                             ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            today.title,
-                            style: PType.display.copyWith(fontSize: 24),
                           ),
-                          const SizedBox(height: 6),
-                          Text('Day ${today.day}', style: PType.meta),
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(gradient: PScrims.home),
+                            ),
+                          ),
+                          Positioned(
+                            left: 20,
+                            right: 20,
+                            bottom: 20,
+                            top: 20,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const PEyebrow("Today's devotional"),
+                                    if (provider.isCompleted(today))
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF2D6A4F),
+                                          borderRadius: BorderRadius.circular(PRadius.pill),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.check_rounded, color: PColors.bone, size: 12),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Completed',
+                                              style: PType.meta.copyWith(
+                                                color: PColors.bone,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      today.title,
+                                      style: PType.display.copyWith(fontSize: 24),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text('Day ${today.day}', style: PType.meta),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
+                const SizedBox(height: 28),
+
+                // ── Other days header ───────────────────────────────────────
+                if (others.isNotEmpty) ...[
+                  const PEyebrow('Other days'),
+                  const SizedBox(height: 4),
+                ],
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 28),
 
-        // ── Other days (locked) ─────────────────────────────────────
-        if (others.isNotEmpty) ...[
-          const PEyebrow('Other days'),
-          const SizedBox(height: 4),
-          ...others.map(
-            (d) => Opacity(
-              opacity: 0.38,
-              child: PListRow(
-                title: d.title,
-                meta: 'Day ${d.day}',
-                showChevron: false,
-                trailing: const Icon(
-                  Icons.lock_outline_rounded,
-                  color: PColors.bone45,
-                  size: 16,
-                ),
-                // onTap intentionally null — day is locked
-              ),
+          // ── Virtualized lazy list of remaining days ───────────────────────
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final d = others[index];
+                return PListRow(
+                  title: d.title,
+                  meta: 'Day ${d.day}',
+                  showChevron: false,
+                  isDimmed: true,
+                  prefix: Text(
+                    d.day.toString().padLeft(2, '0'),
+                    style: PType.meta.copyWith(color: PColors.bone45),
+                  ),
+                  trailing: const Icon(
+                    Icons.lock_outline_rounded,
+                    color: PColors.bone45,
+                    size: 16,
+                  ),
+                );
+              },
+              childCount: others.length,
             ),
           ),
+          const SliverToBoxAdapter(
+            child: SizedBox(height: PSpace.navClearance),
+          ),
         ],
-      ],
+      ),
     );
   }
 }

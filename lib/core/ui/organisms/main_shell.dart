@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../features/home/presentation/screens/home_screen.dart';
 import '../../../features/home/presentation/providers/home_provider.dart';
 import '../../../features/bible/presentation/screens/bible_screen.dart';
+import '../../../features/bible/presentation/providers/bible_provider.dart';
 import '../../../features/declarations/presentation/screens/declarations_screen.dart';
+import '../../../features/declarations/presentation/providers/declaration_provider.dart';
 import '../../../features/topics/presentation/screens/topics_screen.dart';
 import '../../../features/topics/presentation/providers/topics_provider.dart';
 import '../../../features/devotionals/presentation/providers/devotionals_provider.dart';
@@ -21,12 +24,35 @@ class MainShell extends StatefulWidget {
     context.findAncestorStateOfType<_MainShellState>()?.changeTab(index);
   }
 
+  static void reloadAll(BuildContext context) {
+    context.findAncestorStateOfType<_MainShellState>()?._reloadAllData();
+  }
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
+  String? _lastSessionId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = context.watch<AuthProvider>();
+    final currentSessionId =
+        auth.isAuthenticated ? auth.currentSession?.user.id : 'guest';
+    if (_lastSessionId != null && _lastSessionId != currentSessionId) {
+      _lastSessionId = currentSessionId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _reloadAllData();
+        }
+      });
+    } else {
+      _lastSessionId = currentSessionId;
+    }
+  }
 
   void changeTab(int index) {
     setState(() => _currentIndex = index);
@@ -37,6 +63,8 @@ class _MainShellState extends State<MainShell> {
     if (index == 0) {
       context.read<HomeProvider>().loadHomeData();
       context.read<TopicsProvider>().loadTopics();
+    } else if (index == 1) {
+      context.read<BibleProvider>().loadHighlights();
     } else if (index == 3) {
       context.read<TopicsProvider>().loadTopics();
       context.read<DevotionalsProvider>().loadDevotionals();
@@ -45,13 +73,17 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
-  final _screens = const [
-    HomeScreen(),
-    BibleScreen(),
-    DeclarationsScreen(),
-    TopicsScreen(),
-    ProfileScreen(),
-  ];
+  void _reloadAllData() {
+    context.read<HomeProvider>().loadHomeData();
+    context.read<StreaksProvider>().loadStreak();
+    context.read<TopicsProvider>().loadTopics();
+    context.read<DevotionalsProvider>().loadDevotionals();
+    context.read<BibleProvider>().loadHighlights();
+    context.read<DeclarationProvider>().loadDeclarations();
+    setState(() {
+      _currentIndex = 0;
+    });
+  }
 
   // Pantallas donde el nav flotante se muestra (Home, Bible library, Explore, You)
   // Declarations (2) maneja su propia navegación con botón de cierre ✕
@@ -59,12 +91,25 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final sessionKey = auth.isAuthenticated
+        ? auth.currentSession?.user.id ?? 'user'
+        : 'guest';
+
+    final screens = [
+      HomeScreen(key: ValueKey('home_$sessionKey')),
+      BibleScreen(key: ValueKey('bible_$sessionKey')),
+      DeclarationsScreen(key: ValueKey('decl_$sessionKey')),
+      TopicsScreen(key: ValueKey('topics_$sessionKey')),
+      ProfileScreen(key: ValueKey('profile_$sessionKey')),
+    ];
+
     final isDesktop = AppBreakpoints.isDesktop(context);
 
     if (isDesktop) {
       return _WebShell(
         currentIndex: _currentIndex,
-        screens: _screens,
+        screens: screens,
         onTap: changeTab,
       );
     }
@@ -75,14 +120,13 @@ class _MainShellState extends State<MainShell> {
       backgroundColor: PColors.ink,
       body: Stack(
         children: [
-          // Pantallas en IndexedStack para preservar estado
+          // Pantallas en IndexedStack con llaves de sesión dinámicas
           IndexedStack(
             index: _currentIndex,
-            children: _screens,
+            children: screens,
           ),
 
           // Nav flotante — solo en las tabs que lo necesitan
-          // Las pantallas de Declarations y sub-flujos de Bible lo ocultan
           if (showNav)
             PBottomNav(
               currentIndex: _currentIndex,

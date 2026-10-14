@@ -4,10 +4,14 @@ import '../../../../core/state/async_state.dart';
 import '../../../../core/theme/tokens.dart';
 import '../../../../core/theme/app_breakpoints.dart';
 import '../../../../core/ui/organisms/main_shell.dart';
+import '../../../../core/ui/molecules/auth_prompt_sheet.dart';
 import '../../../../core/ui/primitives/primitives.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/bible_version.dart';
 import '../../domain/models/book.dart';
 import '../../domain/models/chapter.dart';
+import '../../domain/models/highlight_color_option.dart';
+import '../widgets/highlight_color_picker_sheet.dart';
 import '../providers/bible_provider.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,41 +56,48 @@ class _BibleScreenState extends State<BibleScreen> {
   void _showVersionPicker(BibleProvider provider) {
     final versionsState = provider.versions;
     if (versionsState is! AsyncData<List<BibleVersion>>) return;
-    final versions = versionsState.data;
+    final allVersions = versionsState.data;
+    // Show only KJV and Reina-Valera 1960
+    final versions = allVersions
+        .where((v) => v.id == 'KJV' || v.id == 'RVR1960')
+        .toList();
 
     showModalBottomSheet(
       context: context,
       backgroundColor: PColors.ink,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(PRadius.flip)),
       ),
       builder: (ctx) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const PEyebrow('Bible Version'),
-                const SizedBox(height: 12),
-                ...versions.map((v) {
-                  final isSelected = v.id == provider.selectedVersion;
-                  return PListRow(
-                    title: v.name,
-                    meta: v.abbreviation,
-                    showChevron: false,
-                    trailing: isSelected
-                        ? const Icon(Icons.check_rounded, color: PColors.bone, size: 18)
-                        : null,
-                    onTap: () {
-                      provider.setVersion(v.id);
-                      Navigator.of(ctx).pop();
-                    },
-                  );
-                }),
-                const SizedBox(height: 8),
-              ],
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter, vertical: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const PEyebrow('Bible Version'),
+                  const SizedBox(height: 12),
+                  ...versions.map((v) {
+                    final isSelected = v.id == provider.selectedVersion;
+                    return PListRow(
+                      title: v.name,
+                      meta: v.abbreviation,
+                      showChevron: false,
+                      trailing: isSelected
+                          ? const Icon(Icons.check_rounded, color: PColors.bone, size: 18)
+                          : null,
+                      onTap: () {
+                        provider.setVersion(v.id);
+                        Navigator.of(ctx).pop();
+                      },
+                    );
+                  }),
+                  const SizedBox(height: 16),
+                ],
+              ),
             ),
           ),
         );
@@ -114,7 +125,7 @@ class _BibleScreenState extends State<BibleScreen> {
             children: [
               const SizedBox(height: 16),
 
-              // ── Header: Title "Bible" + Translation selector (NIV ⌄) ───────────
+              // ── Header: Title "Bible" + Translation selector ──────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -148,7 +159,7 @@ class _BibleScreenState extends State<BibleScreen> {
               ),
               const SizedBox(height: 20),
 
-              // ── Search bar in library ──────────────────────────────────────────
+              // ── Search bar ───────────────────────────────────────────────────
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                 decoration: BoxDecoration(
@@ -171,7 +182,7 @@ class _BibleScreenState extends State<BibleScreen> {
               ),
               const SizedBox(height: 20),
 
-              // ── Tabs: Old Testament | New Testament ────────────────────────────
+              // ── Tabs: Old Testament | New Testament ───────────────────────────
               _TabRow(
                 labels: const ['Old Testament', 'New Testament'],
                 activeIndex: _currentTab,
@@ -179,8 +190,8 @@ class _BibleScreenState extends State<BibleScreen> {
               ),
               const SizedBox(height: 20),
 
-              // ── Responsive books grid ──────────────────────────────────────────
-              _BooksContent(
+              // ── IndexedStack keeps BOTH grids mounted — tab switch is instant ─
+              _BooksIndexedStack(
                 provider: provider,
                 currentTab: _currentTab,
                 onBookTap: _openChapterSelection,
@@ -236,6 +247,7 @@ class _BibleBookSelectionScreenState extends State<BibleBookSelectionScreen> {
         title: 'Choose a book',
         action: const SizedBox(width: 36),
         onBack: () => Navigator.of(context).pop(),
+        onHome: () => Navigator.of(context).popUntil((route) => route.isFirst),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -331,7 +343,7 @@ class BibleChapterSelectionScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: PColors.ink06,
             borderRadius: BorderRadius.circular(PRadius.chip),
-            border: Border.all(color: PColors.ink14.withOpacity(0.18)),
+            border: Border.all(color: PColors.ink14.withValues(alpha: 0.18)),
           ),
           child: Text(
             provider.selectedVersion,
@@ -343,6 +355,7 @@ class BibleChapterSelectionScreen extends StatelessWidget {
           ),
         ),
         onBack: () => Navigator.of(context).pop(),
+        onHome: () => Navigator.of(context).popUntil((route) => route.isFirst),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -628,14 +641,14 @@ class BibleReaderScreen extends StatefulWidget {
   final String bookId;
   final String bookName;
   final int initialChapter;
-  final int totalChapters;
+  final int? totalChapters;
 
   const BibleReaderScreen({
     super.key,
     required this.bookId,
     required this.bookName,
     required this.initialChapter,
-    this.totalChapters = 24,
+    this.totalChapters,
   });
 
   @override
@@ -646,19 +659,40 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
   late int _currentChapter;
   double _fontSizeDelta = 0;
 
+  int _resolveTotalChapters(BibleProvider provider) {
+    if (widget.totalChapters != null &&
+        widget.totalChapters! > 0 &&
+        widget.totalChapters != 24) {
+      return widget.totalChapters!;
+    }
+    return provider.getBookTotalChapters(widget.bookId, defaultChapters: widget.totalChapters ?? 1);
+  }
+
   @override
   void initState() {
     super.initState();
     _currentChapter = widget.initialChapter;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<BibleProvider>().loadChapter(widget.bookId, _currentChapter);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final provider = context.read<BibleProvider>();
+      final total = _resolveTotalChapters(provider);
+      if (_currentChapter > total) {
+        setState(() => _currentChapter = total);
+      }
+      await provider.loadChapter(widget.bookId, _currentChapter);
+      // Pre-warm adjacent chapters in background (fire-and-forget)
+      provider.prefetchChapter(widget.bookId, _currentChapter, total);
     });
   }
 
   void _goToChapter(int chapter) {
-    if (chapter < 1 || chapter > widget.totalChapters) return;
+    final provider = context.read<BibleProvider>();
+    final total = _resolveTotalChapters(provider);
+    if (chapter < 1 || chapter > total) return;
     setState(() => _currentChapter = chapter);
-    context.read<BibleProvider>().loadChapter(widget.bookId, chapter);
+    provider.loadChapter(widget.bookId, chapter).then((_) {
+      // Fire-and-forget prefetch of adjacent chapters
+      provider.prefetchChapter(widget.bookId, chapter, total);
+    });
   }
 
   void _toggleFontSize() {
@@ -680,6 +714,7 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
         title: '${widget.bookName} $_currentChapter',
         titleSuffix: const Icon(Icons.keyboard_arrow_down_rounded, color: PColors.ink40, size: 18),
         onBack: () => Navigator.of(context).pop(),
+        onHome: () => Navigator.of(context).popUntil((route) => route.isFirst),
         action: Row(
           children: [
             GestureDetector(
@@ -709,12 +744,17 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
-            child: _ChapterPager(
-              currentChapter: _currentChapter,
-              totalChapters: widget.totalChapters,
-              bookName: widget.bookName,
-              onPrev: _currentChapter > 1 ? () => _goToChapter(_currentChapter - 1) : null,
-              onNext: _currentChapter < widget.totalChapters ? () => _goToChapter(_currentChapter + 1) : null,
+            child: Builder(
+              builder: (context) {
+                final total = _resolveTotalChapters(provider);
+                return _ChapterPager(
+                  currentChapter: _currentChapter,
+                  totalChapters: total,
+                  bookName: widget.bookName,
+                  onPrev: _currentChapter > 1 ? () => _goToChapter(_currentChapter - 1) : null,
+                  onNext: _currentChapter < total ? () => _goToChapter(_currentChapter + 1) : null,
+                );
+              },
             ),
           ),
         ),
@@ -780,25 +820,37 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
 
   Widget _buildVerse(BibleProvider provider, Verse v) {
     final isHighlighted = provider.isVerseHighlighted(widget.bookId, _currentChapter, v.number);
+    final colorHex = provider.getVerseHighlightColor(widget.bookId, _currentChapter, v.number);
+    final colorOption = HighlightColorOption.fromHex(colorHex);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
-          provider.toggleVerseHighlight(widget.bookId, _currentChapter, v.number);
-          final newState = !isHighlighted;
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                newState
-                    ? '${widget.bookName} $_currentChapter:${v.number} highlighted and saved'
-                    : '${widget.bookName} $_currentChapter:${v.number} highlight removed',
-              ),
-              duration: const Duration(seconds: 2),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          final auth = context.read<AuthProvider>();
+          if (!auth.isAuthenticated) {
+            AuthPromptSheet.show(
+              context,
+              isLoginOnly: false,
+              onSuccess: () {
+                HighlightColorPickerSheet.show(
+                  context,
+                  bookId: widget.bookId,
+                  bookName: widget.bookName,
+                  chapter: _currentChapter,
+                  verse: v,
+                );
+              },
+            );
+          } else {
+            HighlightColorPickerSheet.show(
+              context,
+              bookId: widget.bookId,
+              bookName: widget.bookName,
+              chapter: _currentChapter,
+              verse: v,
+            );
+          }
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
@@ -807,19 +859,31 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
               ? const EdgeInsets.symmetric(horizontal: 14, vertical: 12)
               : const EdgeInsets.symmetric(vertical: 4),
           decoration: BoxDecoration(
-            color: isHighlighted ? PColors.ink06 : Colors.transparent,
+            color: isHighlighted
+                ? colorOption.fill.withValues(alpha: 0.45)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(PRadius.tile),
             border: isHighlighted
-                ? const Border(left: BorderSide(color: PColors.clay, width: 3.0))
+                ? Border(left: BorderSide(color: colorOption.accent, width: 3.5))
                 : null,
           ),
-          child: _buildVerseSpan('${v.number}', v.text, isHighlighted: isHighlighted),
+          child: _buildVerseSpan(
+            '${v.number}',
+            v.text,
+            isHighlighted: isHighlighted,
+            accentColor: isHighlighted ? colorOption.accent : null,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildVerseSpan(String number, String text, {bool isHighlighted = false}) {
+  Widget _buildVerseSpan(
+    String number,
+    String text, {
+    bool isHighlighted = false,
+    Color? accentColor,
+  }) {
     return RichText(
       text: TextSpan(
         children: [
@@ -832,7 +896,7 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
                   fontFamily: 'Hanken Grotesk',
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: isHighlighted ? PColors.clay : PColors.ink40,
+                  color: isHighlighted ? (accentColor ?? PColors.clay) : PColors.ink40,
                 ),
               ),
             ),
@@ -862,8 +926,10 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
 }
 
 // ─── Books content (Responsive grid with compact cards) ───────────────────────
-class _BooksContent extends StatelessWidget {
-  const _BooksContent({
+// ── IndexedStack wrapper — both OT and NT grids stay mounted ─────────────────
+// Tab switches are O(0): no rebuild, just a visibility change on the stack.
+class _BooksIndexedStack extends StatelessWidget {
+  const _BooksIndexedStack({
     required this.provider,
     required this.currentTab,
     required this.onBookTap,
@@ -871,6 +937,29 @@ class _BooksContent extends StatelessWidget {
 
   final BibleProvider provider;
   final int currentTab;
+  final void Function(Book) onBookTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return IndexedStack(
+      index: currentTab,
+      children: [
+        _BooksContent(provider: provider, testament: 'OT', onBookTap: onBookTap),
+        _BooksContent(provider: provider, testament: 'NT', onBookTap: onBookTap),
+      ],
+    );
+  }
+}
+
+class _BooksContent extends StatelessWidget {
+  const _BooksContent({
+    required this.provider,
+    required this.testament, // 'OT' or 'NT'
+    required this.onBookTap,
+  });
+
+  final BibleProvider provider;
+  final String testament;
   final void Function(Book) onBookTap;
 
   @override
@@ -899,9 +988,9 @@ class _BooksContent extends StatelessWidget {
     }
 
     if (provider.books is AsyncData<List<Book>>) {
-      final allBooks = provider.filteredBooks;
-      final targetTestament = currentTab == 0 ? 'OT' : 'NT';
-      final filtered = allBooks.where((b) => b.testament == targetTestament).toList();
+      final filtered = provider.filteredBooks
+          .where((b) => b.testament == testament)
+          .toList();
 
       if (filtered.isEmpty) {
         return const Padding(
@@ -941,6 +1030,7 @@ class _BooksContent extends StatelessWidget {
     return const SizedBox.shrink();
   }
 }
+
 
 class _BookCard extends StatefulWidget {
   const _BookCard({
@@ -1180,12 +1270,14 @@ class _BoneHeader extends StatelessWidget {
     required this.onBack,
     this.titleSuffix,
     this.action,
+    this.onHome, // Optional: jump directly to Bible home
   });
 
   final String title;
   final VoidCallback onBack;
   final Widget? titleSuffix;
   final Widget? action;
+  final VoidCallback? onHome;
 
   @override
   Widget build(BuildContext context) {
@@ -1193,20 +1285,52 @@ class _BoneHeader extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8, bottom: 16),
       child: Row(
         children: [
+          // ── Back button + optional "Bible" home breadcrumb ─────────────
           GestureDetector(
             onTap: onBack,
             child: const Icon(Icons.chevron_left_rounded, color: PColors.ink, size: 28),
           ),
-          const SizedBox(width: 8),
+          if (onHome != null) ...[
+            const SizedBox(width: 2),
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: onHome,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Bible',
+                      style: PType.meta.copyWith(
+                        color: PColors.stone,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: PColors.stone,
+                      size: 14,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else
+            const SizedBox(width: 8),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  style: PType.uiStrong.copyWith(color: PColors.ink, fontSize: 16),
+                Flexible(
+                  child: Text(
+                    title,
+                    style: PType.uiStrong.copyWith(color: PColors.ink, fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                ?titleSuffix,
+                if (titleSuffix != null) titleSuffix!,
               ],
             ),
           ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../theme/tokens.dart';
 
+import 'p_interactive.dart';
+
 /// PListRow — Sin cajas ni fondos:
 /// Solo un borde superior de 1px (hairline en oscuro, ink14 en claro),
 /// padding vertical 17, título rowTitle, meta meta, chevron a bone62.
@@ -17,6 +19,7 @@ class PListRow extends StatelessWidget {
     this.showBottomBorder = false,
     this.onTap,
     this.isLight,
+    this.isDimmed = false,
   });
 
   final String title;
@@ -28,18 +31,48 @@ class PListRow extends StatelessWidget {
   final bool showBottomBorder;
   final VoidCallback? onTap;
   final bool? isLight;
+  final bool isDimmed;
 
   @override
   Widget build(BuildContext context) {
     final light = isLight ?? (Theme.of(context).brightness == Brightness.light);
-    final borderColor = light ? PColors.ink14 : PColors.hairline;
-    final titleColor = light ? PColors.ink : PColors.bone;
-    final metaColor = light ? PColors.ink40 : PColors.bone55;
-    final chevronColor = light ? PColors.ink40 : PColors.bone62;
 
-    Widget content = Container(
-      padding: const EdgeInsets.symmetric(vertical: PSpace.rowPaddingY),
+    if (onTap == null) {
+      return _buildContent(context, light: light, isHovered: false);
+    }
+
+    return PInteractive(
+      onTap: onTap,
+      pressedScale: 0.99,
+      pressedOpacity: 0.80,
+      builder: (context, isHovered, isPressed) =>
+          _buildContent(context, light: light, isHovered: isHovered),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, {required bool light, required bool isHovered}) {
+    final borderColor = light ? PColors.ink14 : PColors.hairline;
+    final titleColor = isDimmed
+        ? (light ? PColors.ink.withValues(alpha: 0.38) : PColors.bone.withValues(alpha: 0.38))
+        : light
+            ? (isHovered ? PColors.ink : PColors.ink.withValues(alpha: 0.85))
+            : (isHovered ? PColors.bone : PColors.bone.withValues(alpha: 0.92));
+    final metaColor = isDimmed
+        ? (light ? PColors.ink40.withValues(alpha: 0.5) : PColors.bone45)
+        : light
+            ? PColors.ink40
+            : (isHovered ? PColors.bone70 : PColors.bone55);
+    final chevronColor = light ? PColors.ink40 : (isHovered ? PColors.bone : PColors.bone62);
+    final hoverBg = light
+        ? (isHovered ? PColors.ink06 : Colors.transparent)
+        : (isHovered ? PColors.glassFill.withValues(alpha: 0.12) : Colors.transparent);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(vertical: PSpace.rowPaddingY, horizontal: 4),
       decoration: BoxDecoration(
+        color: hoverBg,
         border: Border(
           top: showTopBorder ? BorderSide(color: borderColor, width: 1.0) : BorderSide.none,
           bottom: showBottomBorder ? BorderSide(color: borderColor, width: 1.0) : BorderSide.none,
@@ -74,23 +107,19 @@ class PListRow extends StatelessWidget {
           if (trailing != null)
             trailing!
           else if (showChevron)
-            Icon(
-              Icons.chevron_right_rounded,
-              color: chevronColor,
-              size: 20,
+            AnimatedSlide(
+              offset: isHovered ? const Offset(0.12, 0) : Offset.zero,
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOutCubic,
+              child: Icon(
+                Icons.chevron_right_rounded,
+                color: chevronColor,
+                size: 20,
+              ),
             ),
         ],
       ),
     );
-
-    if (onTap != null) {
-      return GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: content,
-      );
-    }
-
-    return content;
   }
 }
+

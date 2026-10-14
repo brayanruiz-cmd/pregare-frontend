@@ -47,6 +47,7 @@ class _PFlipCardState extends State<PFlipCard>
   late final AnimationController _controller;
   late final Animation<double> _animation;
   bool _isFront = true;
+  bool _isHovered = false;
 
   @override
   void initState() {
@@ -112,35 +113,45 @@ class _PFlipCardState extends State<PFlipCard>
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Tarjeta 3D con Culling Manual ──────────────────────────────────
-            GestureDetector(
-              onTap: _toggleFlip,
-              behavior: HitTestBehavior.opaque,
-              child: SizedBox(
-                height: cardH,
-                width: double.infinity,
-                child: AnimatedBuilder(
-                  animation: _animation,
-                  builder: (context, _) {
-                    final angle = _animation.value;
-                    final isUnder = angle >= (pi / 2);
+            // ── Tarjeta 3D con Culling Manual y soporte Web/Touch ───────────
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              onEnter: (_) => setState(() => _isHovered = true),
+              onExit: (_) => setState(() => _isHovered = false),
+              child: GestureDetector(
+                onTap: _toggleFlip,
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedScale(
+                  scale: _isHovered ? 1.012 : 1.0,
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  child: SizedBox(
+                    height: cardH,
+                    width: double.infinity,
+                    child: AnimatedBuilder(
+                      animation: _animation,
+                      builder: (context, _) {
+                        final angle = _animation.value;
+                        final isUnder = angle >= (pi / 2);
 
-                    final transform = Matrix4.identity()
-                      ..setEntry(3, 2, 0.001) // Perspectiva 3D
-                      ..rotateY(angle);
+                        final transform = Matrix4.identity()
+                          ..setEntry(3, 2, 0.001) // Perspectiva 3D
+                          ..rotateY(angle);
 
-                    return Transform(
-                      transform: transform,
-                      alignment: Alignment.center,
-                      child: isUnder
-                          ? Transform(
-                              alignment: Alignment.center,
-                              transform: Matrix4.rotationY(pi), // Despejar cara B
-                              child: _buildBackFace(cardH),
-                            )
-                          : _buildFrontFace(cardH),
-                    );
-                  },
+                        return Transform(
+                          transform: transform,
+                          alignment: Alignment.center,
+                          child: isUnder
+                              ? Transform(
+                                  alignment: Alignment.center,
+                                  transform: Matrix4.rotationY(pi), // Despejar cara B
+                                  child: _buildBackFace(cardH),
+                                )
+                              : _buildFrontFace(cardH),
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -152,18 +163,31 @@ class _PFlipCardState extends State<PFlipCard>
               animation: _animation,
               builder: (context, _) {
                 final isBack = _animation.value >= (pi / 2);
-                return Text(
-                  isBack ? widget.backPrompt : widget.frontPrompt,
-                  style: PType.meta.copyWith(
-                    color: PColors.bone55,
-                    fontSize: 12,
-                  ),
-                  textAlign: TextAlign.center,
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.sync_rounded,
+                      size: 13,
+                      color: _isHovered ? PColors.bone : PColors.bone45,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isBack ? widget.backPrompt : widget.frontPrompt,
+                      style: PType.meta.copyWith(
+                        color: _isHovered ? PColors.bone : PColors.bone55,
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 );
               },
             ),
           ],
         );
+
       },
     );
   }

@@ -10,6 +10,10 @@ class DeclarationProvider extends ChangeNotifier {
 
   final GetDailyDeclarationsUseCase _getDaily;
 
+  // Master list — fetched once and kept in memory.
+  // Filtering by gender is done locally without hitting the network.
+  List<Declaration> _allDeclarations = [];
+
   AsyncState<List<Declaration>> _declarations = const AsyncInitial();
   AsyncState<List<Declaration>> get declarations => _declarations;
 
@@ -22,9 +26,11 @@ class DeclarationProvider extends ChangeNotifier {
   int _currentIndex = 0;
   int get currentIndex => _currentIndex;
 
+  // ── Derived view ──────────────────────────────────────────────────────────
+
   List<Declaration> get currentDeclarations {
     if (_declarations is AsyncData) {
-      return (_declarations as AsyncData).data;
+      return (_declarations as AsyncData<List<Declaration>>).data;
     }
     return [];
   }
@@ -35,25 +41,60 @@ class DeclarationProvider extends ChangeNotifier {
     return decls[_currentIndex];
   }
 
+  // ── Filtering (local — no network call) ───────────────────────────────────
+
+  void _applyFilters() {
+    var filtered = _allDeclarations;
+
+    if (_selectedGender != 'all') {
+      // Backend stores 'hombres', 'mujeres', or 'todos'
+      // Pills use 'hombre' / 'mujer' as keys — map to backend plural form
+      final backendGender = _selectedGender == 'hombre' ? 'hombres' : 'mujeres';
+      filtered = filtered.where((d) {
+        final g = d.gender.toLowerCase().trim();
+        return g.isEmpty || g == 'todos' || g == backendGender;
+      }).toList();
+    }
+
+    if (_selectedTopics.isNotEmpty) {
+      filtered = filtered.where((d) {
+        return d.topics.any((t) => _selectedTopics.contains(t));
+      }).toList();
+    }
+
+    _declarations = AsyncData(filtered);
+    _currentIndex = 0;
+    notifyListeners();
+  }
+
+  // ── Network load ──────────────────────────────────────────────────────────
+
   Future<void> loadDeclarations() async {
     _declarations = const AsyncLoading();
     notifyListeners();
 
     try {
-      final gender = _selectedGender == 'all' ? null : _selectedGender;
-      final topics = _selectedTopics.isEmpty ? null : _selectedTopics;
-      final result = await _getDaily.execute(gender: gender, topics: topics);
-      _declarations = AsyncData(result);
-      _currentIndex = 0;
+      // Always fetch without filters so we have the full dataset locally
+      final result = await _getDaily.execute();
+      _allDeclarations = result;
+      _applyFilters(); // Apply current filters on the fresh data
     } catch (e) {
       _declarations = AsyncError(e.toString());
+      notifyListeners();
     }
-    notifyListeners();
   }
 
+  // ── Filter setters (instant — no network) ────────────────────────────────
+
+  /// Changes the gender filter and applies it instantly to cached data.
   void setGender(String gender) {
+    if (_selectedGender == gender) return; // No-op if already selected
     _selectedGender = gender;
-    loadDeclarations();
+    if (_allDeclarations.isNotEmpty) {
+      _applyFilters(); // Filter locally — no loading spinner
+    } else {
+      loadDeclarations(); // First load ever
+    }
   }
 
   void toggleTopic(String topic) {
@@ -62,8 +103,14 @@ class DeclarationProvider extends ChangeNotifier {
     } else {
       _selectedTopics.add(topic);
     }
-    loadDeclarations();
+    if (_allDeclarations.isNotEmpty) {
+      _applyFilters();
+    } else {
+      loadDeclarations();
+    }
   }
+
+  // ── Navigation ────────────────────────────────────────────────────────────
 
   void nextDeclaration() {
     final decls = currentDeclarations;
