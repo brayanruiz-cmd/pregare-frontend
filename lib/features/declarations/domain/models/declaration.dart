@@ -6,6 +6,7 @@ class Declaration {
     required this.text,
     required this.reference,
     required this.verse,
+    this.dayNumber,
   });
 
   final dynamic id;
@@ -14,6 +15,7 @@ class Declaration {
   final String text;
   final String reference;
   final String verse;
+  final int? dayNumber;
 
   factory Declaration.fromJson(Map<String, dynamic> json) {
     return Declaration(
@@ -25,6 +27,9 @@ class Declaration {
       text: json['text'] as String? ?? '',
       reference: json['reference'] as String? ?? '',
       verse: json['verse'] as String? ?? '',
+      dayNumber: json['dayNumber'] is int
+          ? json['dayNumber'] as int
+          : (json['day_number'] is int ? json['day_number'] as int : null),
     );
   }
 
@@ -35,5 +40,6 @@ class Declaration {
     'text': text,
     'reference': reference,
     'verse': verse,
+    'dayNumber': dayNumber,
   };
 }

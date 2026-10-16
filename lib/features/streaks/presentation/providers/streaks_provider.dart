@@ -7,8 +7,8 @@ import '../../domain/ports/streaks_repository.dart';
 import '../../domain/models/user_badge_model.dart';
 
 class StreaksProvider extends ChangeNotifier {
-  // ignore: prefer_initializing_formals
   StreaksProvider({required StreaksRepository repository})
+      // ignore: prefer_initializing_formals
       : _repository = repository {
     loadStreak();
     loadBadges();
@@ -97,12 +97,40 @@ class StreaksProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  List<String> _proclaimedDeclarationIds = [];
+  List<String> get proclaimedDeclarationIds => _proclaimedDeclarationIds;
+
+  Future<void> loadProclaimedDeclarations() async {
+    try {
+      _proclaimedDeclarationIds = await _repository.getProclaimedDeclarations();
+      notifyListeners();
+    } catch (_) {}
+  }
+
   Future<bool> completeDevotional(String devotionalId) async {
     try {
       final ok = await _repository.completeDevotional(devotionalId);
       if (ok) {
         await loadStreak();
         await loadBadges();
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> proclaimDeclaration(String declarationId) async {
+    try {
+      final ok = await _repository.proclaimDeclaration(declarationId);
+      if (ok) {
+        if (!_proclaimedDeclarationIds.contains(declarationId)) {
+          _proclaimedDeclarationIds.add(declarationId);
+        }
+        await loadStreak();
+        await loadBadges();
+        notifyListeners();
         return true;
       }
       return false;

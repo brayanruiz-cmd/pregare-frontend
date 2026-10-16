@@ -3,30 +3,46 @@ import '../../../../core/state/async_state.dart';
 import '../../domain/models/declaration.dart';
 import '../../domain/ports/declarations_repository.dart';
 import '../../application/usecases/get_daily_declarations_use_case.dart';
+import '../../application/usecases/get_today_declaration_use_case.dart';
 
 class DeclarationProvider extends ChangeNotifier {
   DeclarationProvider({required DeclarationsRepository repository})
-      : _getDaily = GetDailyDeclarationsUseCase(repository: repository);
+      : _getDaily = GetDailyDeclarationsUseCase(repository: repository),
+        _getToday = GetTodayDeclarationUseCase(repository: repository);
 
   final GetDailyDeclarationsUseCase _getDaily;
+  final GetTodayDeclarationUseCase _getToday;
 
-  // Master list — fetched once and kept in memory.
-  // Filtering by gender is done locally without hitting the network.
+  // ── 365 Daily Declaration State ──────────────────────────────────────────
+  AsyncState<Declaration> _todayState = const AsyncInitial();
+  AsyncState<Declaration> get todayState => _todayState;
+
+  final Map<String, Declaration> _cachedTodayByGender = {};
+  Declaration? _todayDeclaration;
+  Declaration? get todayDeclaration => _todayDeclaration;
+
+  bool _isRevealed = false;
+  bool get isRevealed => _isRevealed;
+
+  void setRevealed(bool val) {
+    _isRevealed = val;
+    notifyListeners();
+  }
+
+  // ── Legacy / Multi-item declarations state ────────────────────────────────
   List<Declaration> _allDeclarations = [];
 
   AsyncState<List<Declaration>> _declarations = const AsyncInitial();
   AsyncState<List<Declaration>> get declarations => _declarations;
 
-  String _selectedGender = 'all';
+  String _selectedGender = 'mujeres'; // 'mujeres' or 'hombres'
   String get selectedGender => _selectedGender;
 
-  List<String> _selectedTopics = [];
+  final List<String> _selectedTopics = [];
   List<String> get selectedTopics => _selectedTopics;
 
   int _currentIndex = 0;
   int get currentIndex => _currentIndex;
-
-  // ── Derived view ──────────────────────────────────────────────────────────
 
   List<Declaration> get currentDeclarations {
     if (_declarations is AsyncData) {
@@ -41,15 +57,44 @@ class DeclarationProvider extends ChangeNotifier {
     return decls[_currentIndex];
   }
 
-  // ── Filtering (local — no network call) ───────────────────────────────────
+  // ── Today's Single Declaration Loader ─────────────────────────────────────
+  Future<void> loadTodayDeclaration({String? gender, bool forceReload = false}) async {
+    if (gender != null) {
+      final g = gender.toLowerCase().trim();
+      _selectedGender = (g.startsWith('h') || g.contains('men') || g == 'male')
+          ? 'hombres'
+          : 'mujeres';
+    }
 
+    if (!forceReload && _cachedTodayByGender.containsKey(_selectedGender)) {
+      _todayDeclaration = _cachedTodayByGender[_selectedGender];
+      _todayState = AsyncData(_todayDeclaration!);
+      notifyListeners();
+      return;
+    }
+
+    _todayState = const AsyncLoading();
+    notifyListeners();
+
+    try {
+      final item = await _getToday.execute(gender: _selectedGender);
+      _cachedTodayByGender[_selectedGender] = item;
+      _todayDeclaration = item;
+      _todayState = AsyncData(item);
+    } catch (e) {
+      _todayState = AsyncError(e.toString());
+    }
+    notifyListeners();
+  }
+
+  // ── Filtering & Legacy loaders ───────────────────────────────────────────
   void _applyFilters() {
     var filtered = _allDeclarations;
 
     if (_selectedGender != 'all') {
-      // Backend stores 'hombres', 'mujeres', or 'todos'
-      // Pills use 'hombre' / 'mujer' as keys — map to backend plural form
-      final backendGender = _selectedGender == 'hombre' ? 'hombres' : 'mujeres';
+      final backendGender = (_selectedGender == 'hombre' || _selectedGender == 'hombres')
+          ? 'hombres'
+          : 'mujeres';
       filtered = filtered.where((d) {
         final g = d.gender.toLowerCase().trim();
         return g.isEmpty || g == 'todos' || g == backendGender;
@@ -67,33 +112,37 @@ class DeclarationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Network load ──────────────────────────────────────────────────────────
-
   Future<void> loadDeclarations() async {
     _declarations = const AsyncLoading();
     notifyListeners();
 
+    // Also load today's single declaration
+    loadTodayDeclaration(gender: _selectedGender, forceReload: true);
+
     try {
-      // Always fetch without filters so we have the full dataset locally
       final result = await _getDaily.execute();
       _allDeclarations = result;
-      _applyFilters(); // Apply current filters on the fresh data
+      _applyFilters();
     } catch (e) {
       _declarations = AsyncError(e.toString());
       notifyListeners();
     }
   }
 
-  // ── Filter setters (instant — no network) ────────────────────────────────
-
-  /// Changes the gender filter and applies it instantly to cached data.
   void setGender(String gender) {
-    if (_selectedGender == gender) return; // No-op if already selected
-    _selectedGender = gender;
+    final normalized = (gender.toLowerCase().startsWith('h') ||
+            gender.toLowerCase().contains('men') ||
+            gender.toLowerCase() == 'male')
+        ? 'hombres'
+        : 'mujeres';
+
+    if (_selectedGender == normalized && _todayDeclaration != null) return;
+
+    _selectedGender = normalized;
+    loadTodayDeclaration(gender: normalized, forceReload: false);
+
     if (_allDeclarations.isNotEmpty) {
-      _applyFilters(); // Filter locally — no loading spinner
-    } else {
-      loadDeclarations(); // First load ever
+      _applyFilters();
     }
   }
 
@@ -109,8 +158,6 @@ class DeclarationProvider extends ChangeNotifier {
       loadDeclarations();
     }
   }
-
-  // ── Navigation ────────────────────────────────────────────────────────────
 
   void nextDeclaration() {
     final decls = currentDeclarations;

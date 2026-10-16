@@ -6,6 +6,7 @@ import '../../domain/ports/topics_repository.dart';
 
 class TopicsProvider extends ChangeNotifier {
   TopicsProvider({required TopicsRepository repository})
+      // ignore: prefer_initializing_formals
       : _repository = repository;
 
   final TopicsRepository _repository;

@@ -52,5 +52,22 @@ class StreaksApiAdapter implements StreaksRepository {
     final res = await httpClient.post('/streaks/devotionals/$devotionalId/complete', data: {});
     return res != null;
   }
+
+  @override
+  Future<bool> proclaimDeclaration(String declarationId) async {
+    final res = await httpClient.post('/streaks/declarations/$declarationId/proclaim', data: {});
+    return res != null;
+  }
+
+  @override
+  Future<List<String>> getProclaimedDeclarations() async {
+    try {
+      final res = await httpClient.get('/streaks/declarations/proclaimed');
+      if (res is List) {
+        return res.map((e) => e.toString()).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
 }
 

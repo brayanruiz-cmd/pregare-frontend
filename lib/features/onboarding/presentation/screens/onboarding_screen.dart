@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/ui/organisms/main_shell.dart';
 import '../../../../core/ui/molecules/auth_prompt_sheet.dart';
+import '../../../../core/ui/organisms/main_shell.dart';
 import '../../../topics/presentation/providers/topics_provider.dart';
 import '../providers/onboarding_provider.dart';
 
@@ -322,7 +322,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 40),
                   Text(
                     "What's your name?",
                     style: AppTypography.displaySerifLarge.copyWith(fontSize: 30),

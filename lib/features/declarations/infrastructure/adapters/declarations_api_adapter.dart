@@ -23,6 +23,20 @@ class DeclarationsApiAdapter implements DeclarationsRepository {
   }
 
   @override
+  Future<Declaration> getTodayDeclaration({String? gender, int? day}) async {
+    final queryParams = <String, String>{};
+    if (gender != null) queryParams['gender'] = gender;
+    if (day != null) queryParams['day'] = day.toString();
+
+    final data = await httpClient.get(
+      '/declarations/today',
+      parser: (json) => json,
+      queryParameters: queryParams,
+    );
+    return Declaration.fromJson(data as Map<String, dynamic>);
+  }
+
+  @override
   Future<Map<String, String>> getTopics() async {
     final data = await httpClient.get('/declarations/topics', parser: (json) => json);
     return Map<String, String>.from(data);

@@ -4,7 +4,9 @@ import '../../domain/models/daily_verse.dart';
 import '../../domain/ports/home_repository.dart';
 
 class HomeProvider extends ChangeNotifier {
-  HomeProvider({required HomeRepository repository}) : _repository = repository;
+  HomeProvider({required HomeRepository repository})
+      // ignore: prefer_initializing_formals
+      : _repository = repository;
 
   final HomeRepository _repository;
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/state/async_state.dart';
 import '../../../../core/theme/tokens.dart';
@@ -47,6 +48,32 @@ class _TopicsScreenState extends State<TopicsScreen> {
   }
 
   void _openDevotionalDetail(Devotional devotional) {
+    final devProvider = context.read<DevotionalsProvider>();
+    final homeState = context.read<HomeProvider>().state;
+    final todayDayNumber = homeState is AsyncData && (homeState as AsyncData).data is HomeData
+        ? ((homeState as AsyncData).data as HomeData).dailyVerse.devotionalDay
+        : 1;
+
+    final isToday = devotional.day == todayDayNumber || (todayDayNumber == null && devotional.day == 1);
+    final isCompleted = devProvider.isCompleted(devotional);
+
+    // Block locked devotionals from opening
+    if (!isToday && !isCompleted) {
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Day ${devotional.day} is locked. Complete today\'s devotional to progress.',
+            style: PType.body.copyWith(color: PColors.bone, fontSize: 13),
+          ),
+          backgroundColor: PColors.ink,
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => _DevotionalDetailScreen(devotional: devotional)),
     );
@@ -313,6 +340,10 @@ class _DevotionalsContent extends StatelessWidget {
         : devotionals.first;
 
     final others = devotionals.where((d) => d.day != today.day).toList();
+    final completedOthers = others.where((d) => provider.isCompleted(d)).toList()
+      ..sort((a, b) => a.day.compareTo(b.day));
+    final lockedOthers = others.where((d) => !provider.isCompleted(d)).toList()
+      ..sort((a, b) => a.day.compareTo(b.day));
 
     return RefreshIndicator(
       onRefresh: () => context.read<DevotionalsProvider>().loadDevotionals(),
@@ -405,41 +436,99 @@ class _DevotionalsContent extends StatelessWidget {
                     );
                   },
                 ),
-                const SizedBox(height: 28),
 
-                // ── Other days header ───────────────────────────────────────
-                if (others.isNotEmpty) ...[
-                  const PEyebrow('Other days'),
+                // ── Completed devotionals header (shown first) ───────────────
+                if (completedOthers.isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  PEyebrow('Completed (${completedOthers.length})'),
                   const SizedBox(height: 4),
                 ],
               ],
             ),
           ),
 
-          // ── Virtualized lazy list of remaining days ───────────────────────
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final d = others[index];
-                return PListRow(
-                  title: d.title,
-                  meta: 'Day ${d.day}',
-                  showChevron: false,
-                  isDimmed: true,
-                  prefix: Text(
-                    d.day.toString().padLeft(2, '0'),
-                    style: PType.meta.copyWith(color: PColors.bone45),
-                  ),
-                  trailing: const Icon(
-                    Icons.lock_outline_rounded,
-                    color: PColors.bone45,
-                    size: 16,
-                  ),
-                );
-              },
-              childCount: others.length,
+          // ── Completed devotionals list (viewable & re-readable) ───────────
+          if (completedOthers.isNotEmpty)
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final d = completedOthers[index];
+                  return PListRow(
+                    title: d.title,
+                    meta: 'Day ${d.day} • Completed',
+                    showChevron: false,
+                    isDimmed: false,
+                    onTap: () => onDevotionalTap(d),
+                    prefix: Text(
+                      d.day.toString().padLeft(2, '0'),
+                      style: PType.meta.copyWith(
+                        color: const Color(0xFF2D6A4F),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    trailing: const Icon(
+                      Icons.check_circle_rounded,
+                      color: Color(0xFF2D6A4F),
+                      size: 18,
+                    ),
+                  );
+                },
+                childCount: completedOthers.length,
+              ),
             ),
-          ),
+
+          // ── Locked days header ───────────────────────────────────────────
+          if (lockedOthers.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 28, bottom: 4),
+                child: PEyebrow('Upcoming days (${lockedOthers.length})'),
+              ),
+            ),
+
+          // ── Locked days list (padlock icon, tap blocked) ──────────────────
+          if (lockedOthers.isNotEmpty)
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final d = lockedOthers[index];
+                  return PListRow(
+                    title: d.title,
+                    meta: 'Day ${d.day} • Locked',
+                    showChevron: false,
+                    isDimmed: true,
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Day ${d.day} is locked. Complete today\'s devotional to unlock.',
+                            style: PType.body.copyWith(color: PColors.bone, fontSize: 13),
+                          ),
+                          backgroundColor: PColors.ink,
+                          duration: const Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    prefix: Text(
+                      d.day.toString().padLeft(2, '0'),
+                      style: PType.meta.copyWith(
+                        color: PColors.bone45,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    trailing: const Icon(
+                      Icons.lock_rounded,
+                      color: PColors.bone45,
+                      size: 16,
+                    ),
+                  );
+                },
+                childCount: lockedOthers.length,
+              ),
+            ),
+
           const SliverToBoxAdapter(
             child: SizedBox(height: PSpace.navClearance),
           ),
