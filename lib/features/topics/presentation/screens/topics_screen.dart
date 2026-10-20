@@ -16,6 +16,7 @@ import '../../../streaks/presentation/providers/streaks_provider.dart';
 import '../../domain/models/topic.dart';
 import '../providers/topics_provider.dart';
 import 'topic_detail_screen.dart';
+import '../../../../core/ui/molecules/reading_scroll_capsule.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Explore screen — Topics + Devotionals tabs
@@ -64,11 +65,8 @@ class _TopicsScreenState extends State<TopicsScreen> {
         SnackBar(
           content: Text(
             'Day ${devotional.day} is locked. Complete today\'s devotional to progress.',
-            style: PType.body.copyWith(color: PColors.bone, fontSize: 13),
           ),
-          backgroundColor: PColors.ink,
           duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
         ),
       );
       return;
@@ -503,11 +501,8 @@ class _DevotionalsContent extends StatelessWidget {
                         SnackBar(
                           content: Text(
                             'Day ${d.day} is locked. Complete today\'s devotional to unlock.',
-                            style: PType.body.copyWith(color: PColors.bone, fontSize: 13),
                           ),
-                          backgroundColor: PColors.ink,
                           duration: const Duration(seconds: 2),
-                          behavior: SnackBarBehavior.floating,
                         ),
                       );
                     },
@@ -557,9 +552,12 @@ class _DevotionalDetailScreenState extends State<_DevotionalDetailScreen> {
   bool _completing = false;
   late bool _completed;
 
+  late final ScrollController _scrollController;
+
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
     _completed = widget.devotional.isCompleted;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_completed && mounted) {
@@ -571,21 +569,32 @@ class _DevotionalDetailScreenState extends State<_DevotionalDetailScreen> {
     });
   }
 
-  /// Parse a verse reference like "Proverbs 27:17" or "(Proverbs 27:17)" into (bookId, bookName, chapter)
-  (String, String, int) _parseRef(String ref) {
-    if (ref.trim().isEmpty) return ('genesis', 'Genesis', 1);
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// Parse a verse reference like "Hebrews 6:10" or "Proverbs 27:17" into (bookId, bookName, chapter, verse)
+  (String, String, int, int) _parseRef(String ref) {
+    if (ref.trim().isEmpty) return ('genesis', 'Genesis', 1, 1);
 
     var clean = ref.split('·').first.trim();
-    // If text contains a parenthetical reference e.g. "(Proverbs 27:17)", extract it
     final parenMatch = RegExp(r'\(([^)]+)\)').firstMatch(clean);
     if (parenMatch != null) {
       clean = parenMatch.group(1)!.trim();
     }
 
+    int verse = 1;
     final lastColon = clean.lastIndexOf(':');
     String bookAndChap;
     if (lastColon != -1) {
       bookAndChap = clean.substring(0, lastColon).trim();
+      final versePart = clean.substring(lastColon + 1).trim();
+      final verseMatch = RegExp(r'^\d+').firstMatch(versePart);
+      if (verseMatch != null) {
+        verse = int.tryParse(verseMatch.group(0)!) ?? 1;
+      }
     } else {
       bookAndChap = clean;
     }
@@ -604,11 +613,19 @@ class _DevotionalDetailScreenState extends State<_DevotionalDetailScreen> {
     }
 
     var bookId = bookName.toLowerCase().replaceAll(' ', '').replaceAll('-', '');
-    if (bookId == 'psalm') {
+    if (bookId == 'psalm') bookId = 'psalms';
+    if (bookId == 'hebreos') {
+      bookId = 'hebrews';
+      bookName = 'Hebrews';
+    } else if (bookId == 'proverbios') {
+      bookId = 'proverbs';
+      bookName = 'Proverbs';
+    } else if (bookId == 'salmos') {
       bookId = 'psalms';
+      bookName = 'Psalms';
     }
 
-    return (bookId, bookName, chapter);
+    return (bookId, bookName, chapter, verse);
   }
 
   Future<void> _handleComplete() async {
@@ -643,13 +660,14 @@ class _DevotionalDetailScreenState extends State<_DevotionalDetailScreen> {
         _completing = false;
         _completed = true;
       });
+
+      // Show a brief green confirmation, then navigate back to the list
       if (newBadges && streaks.currentBadges.isNotEmpty) {
         final unlocked = streaks.currentBadges.where((b) => b.isUnlocked).toList();
         if (unlocked.isNotEmpty) {
           final badge = unlocked.last;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              backgroundColor: const Color(0xFF1A1A1A),
               duration: const Duration(seconds: 3),
               content: Row(
                 children: [
@@ -675,13 +693,17 @@ class _DevotionalDetailScreenState extends State<_DevotionalDetailScreen> {
           );
         }
       }
+
+      // Wait 1.2 s so user sees the green button, then go back to the list
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (!mounted) return;
+      Navigator.of(context).pop();
     } catch (_) {
       if (!mounted) return;
       setState(() => _completing = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Could not save progress. Please try again.'),
-          backgroundColor: Color(0xFF1A1A1A),
         ),
       );
     }
@@ -693,7 +715,7 @@ class _DevotionalDetailScreenState extends State<_DevotionalDetailScreen> {
     final verseRef = d.effectiveVerseReference.isNotEmpty
         ? d.effectiveVerseReference
         : d.verse;
-    final (bookId, bookName, chapter) = _parseRef(verseRef);
+    final (bookId, bookName, chapter, verse) = _parseRef(verseRef);
 
     return PScreen(
       background: const PScreenBackground.bone(),
@@ -710,30 +732,35 @@ class _DevotionalDetailScreenState extends State<_DevotionalDetailScreen> {
           const Icon(Icons.ios_share_rounded, color: PColors.ink40, size: 20),
         ],
       ),
-      body: ListView(
-        padding: EdgeInsets.zero,
+      body: Stack(
         children: [
-          const SizedBox(height: 8),
-          PEyebrow('Day ${d.day} · Devotional', color: PColors.stone),
-          const SizedBox(height: 12),
-          Text(
-            d.title,
-            style: PType.display.copyWith(color: PColors.ink, fontSize: 30, height: 1.15),
-          ),
-          const SizedBox(height: 28),
-
-          // ── Scripture ─ tappable → opens Bible at this reference ───────
-          GestureDetector(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => BibleReaderScreen(
-                  bookId: bookId,
-                  bookName: bookName,
-                  initialChapter: chapter,
-                ),
+          ListView(
+            controller: _scrollController,
+            padding: EdgeInsets.zero,
+            children: [
+              const SizedBox(height: 8),
+              PEyebrow('Day ${d.day} · Devotional', color: PColors.stone),
+              const SizedBox(height: 12),
+              Text(
+                d.title,
+                style: PType.display.copyWith(color: PColors.ink, fontSize: 30, height: 1.15),
               ),
-            ),
-            child: Container(
+              const SizedBox(height: 28),
+
+              // ── Scripture ─ tappable → opens Bible at this reference ───────
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => BibleReaderScreen(
+                      bookId: bookId,
+                      bookName: bookName,
+                      initialChapter: chapter,
+                      initialVerse: verse,
+                      targetVersion: 'KJV',
+                    ),
+                  ),
+                ),
+                child: Container(
               padding: const EdgeInsets.only(left: 16, top: 12, bottom: 12, right: 12),
               decoration: BoxDecoration(
                 color: PColors.ink.withValues(alpha: 0.03),
@@ -848,6 +875,16 @@ class _DevotionalDetailScreenState extends State<_DevotionalDetailScreen> {
           const SizedBox(height: 40),
         ],
       ),
-    );
+      Positioned(
+        right: 4,
+        top: 140,
+        child: ReadingScrollCapsule(
+          scrollController: _scrollController,
+          backgroundColor: const Color(0xAA1E1926),
+        ),
+      ),
+    ],
+  ),
+);
   }
 }

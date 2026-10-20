@@ -116,14 +116,9 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
         '«${item.declarationText}»\n\n${item.scriptureRef}\n"${item.scriptureText}"\n\n— Via Pregare';
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Declaration copied to clipboard',
-          style: PType.body.copyWith(color: PColors.bone, fontSize: 13),
-        ),
-        backgroundColor: PColors.ink,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
+      const SnackBar(
+        content: Text('Declaration copied to clipboard'),
+        duration: Duration(seconds: 2),
       ),
     );
   }
@@ -204,15 +199,50 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
       return PScreen(
         background: const PScreenBackground.photo('assets/photo-dawn.jpg', scrim: PScrims.home),
         hasNav: false,
-        body: Center(
+        padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
+        body: SafeArea(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              const PEyebrow('No declarations available'),
-              const SizedBox(height: 16),
-              _PrimaryButton(
-                label: 'Retry',
-                onTap: () => provider.loadTodayDeclaration(forceReload: true),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  PInteractive(
+                    onTap: _exitToHome,
+                    tooltip: 'Back to home',
+                    builder: (context, isHovered, isPressed) => Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: PColors.glassFill,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: PColors.glassStroke),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.close, color: PColors.bone, size: 20),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const PEyebrow('No declarations available'),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Could not connect to server',
+                        style: TextStyle(color: PColors.bone70, fontSize: 13),
+                      ),
+                      const SizedBox(height: 20),
+                      _PrimaryButton(
+                        label: 'Retry',
+                        onTap: () => provider.loadTodayDeclaration(forceReload: true),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),

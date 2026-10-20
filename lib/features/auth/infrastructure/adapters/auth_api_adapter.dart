@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/infrastructure/http/http_client.dart';
 import '../../domain/models/auth_session.dart';
+import '../../domain/models/user.dart';
 import '../../domain/ports/auth_repository.dart';
 
 class AuthApiAdapter implements AuthRepository {
@@ -9,6 +11,7 @@ class AuthApiAdapter implements AuthRepository {
   final PregareHttpClient httpClient;
   static const _tokenKey = 'pregare_auth_token';
   static const _refreshTokenKey = 'pregare_refresh_token';
+  static const _userKey = 'pregare_auth_user';
 
   Future<void> _persistSession(AuthSession session) async {
     httpClient.updateToken(session.accessToken);
@@ -16,6 +19,7 @@ class AuthApiAdapter implements AuthRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_tokenKey, session.accessToken);
       await prefs.setString(_refreshTokenKey, session.refreshToken);
+      await prefs.setString(_userKey, jsonEncode(session.user.toJson()));
     } catch (_) {}
   }
 
@@ -103,6 +107,7 @@ class AuthApiAdapter implements AuthRepository {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_tokenKey);
         await prefs.remove(_refreshTokenKey);
+        await prefs.remove(_userKey);
       } catch (_) {}
     }
   }
@@ -122,6 +127,34 @@ class AuthApiAdapter implements AuthRepository {
       }
       return token;
     } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<AuthSession?> getStoredSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_tokenKey);
+      final refreshToken = prefs.getString(_refreshTokenKey);
+      final userRaw = prefs.getString(_userKey);
+
+      if (token != null && token.isNotEmpty && refreshToken != null && userRaw != null) {
+        final userJson = jsonDecode(userRaw) as Map<String, dynamic>;
+        final user = User.fromJson(userJson);
+        final session = AuthSession(
+          user: user,
+          accessToken: token,
+          refreshToken: refreshToken,
+        );
+        httpClient.updateToken(token);
+        return session;
+      } else {
+        httpClient.updateToken(null);
+        return null;
+      }
+    } catch (_) {
+      httpClient.updateToken(null);
       return null;
     }
   }

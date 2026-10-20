@@ -4,6 +4,8 @@ import '../../../../core/theme/tokens.dart';
 import '../../../../core/state/async_state.dart';
 import '../../../../core/ui/primitives/primitives.dart';
 import '../providers/auth_provider.dart';
+import '../../../streaks/presentation/providers/streaks_provider.dart';
+import '../../../bible/presentation/providers/bible_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,12 +27,18 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  void _submit() async {
     if (_formKey.currentState!.validate()) {
-      context.read<AuthProvider>().login(
+      await context.read<AuthProvider>().login(
             email: _emailController.text.trim(),
             password: _passwordController.text,
           );
+      if (mounted && context.read<AuthProvider>().isAuthenticated) {
+        context.read<StreaksProvider>().loadStreak();
+        context.read<StreaksProvider>().loadBadges();
+        context.read<BibleProvider>().loadHighlights();
+        Navigator.of(context).pop();
+      }
     }
   }
 

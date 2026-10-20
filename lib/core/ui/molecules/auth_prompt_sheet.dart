@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../features/onboarding/presentation/providers/onboarding_provider.dart';
+import '../../../features/streaks/presentation/providers/streaks_provider.dart';
+import '../../../features/bible/presentation/providers/bible_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
 import '../../state/async_state.dart';
@@ -97,6 +99,11 @@ class _AuthPromptSheetState extends State<AuthPromptSheet> {
     if (!mounted) return;
 
     if (auth.isAuthenticated) {
+      if (context.mounted) {
+        context.read<StreaksProvider>().loadStreak();
+        context.read<StreaksProvider>().loadBadges();
+        context.read<BibleProvider>().loadHighlights();
+      }
       Navigator.of(context).pop();
       widget.onSuccess?.call();
       ScaffoldMessenger.of(context).showSnackBar(

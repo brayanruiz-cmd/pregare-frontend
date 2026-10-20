@@ -64,6 +64,19 @@ class PregareHttpClient {
     }
   }
 
+  Future<T> patch<T>(
+    String path, {
+    dynamic data,
+    T Function(dynamic data)? parser,
+  }) async {
+    try {
+      final response = await _dio.patch(path, data: data);
+      return parser != null ? parser(response.data) : response.data as T;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   Future<void> delete(String path) async {
     try {
       await _dio.delete(path);

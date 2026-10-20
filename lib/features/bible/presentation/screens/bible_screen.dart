@@ -13,6 +13,7 @@ import '../../domain/models/chapter.dart';
 import '../../domain/models/highlight_color_option.dart';
 import '../widgets/highlight_color_picker_sheet.dart';
 import '../providers/bible_provider.dart';
+import '../../../../core/ui/molecules/reading_scroll_capsule.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen 10 — Bible library (Background: INK · With floating nav)
@@ -642,6 +643,8 @@ class BibleReaderScreen extends StatefulWidget {
   final String bookName;
   final int initialChapter;
   final int? totalChapters;
+  final int? initialVerse;
+  final String? targetVersion;
 
   const BibleReaderScreen({
     super.key,
@@ -649,6 +652,8 @@ class BibleReaderScreen extends StatefulWidget {
     required this.bookName,
     required this.initialChapter,
     this.totalChapters,
+    this.initialVerse,
+    this.targetVersion,
   });
 
   @override
@@ -657,7 +662,9 @@ class BibleReaderScreen extends StatefulWidget {
 
 class _BibleReaderScreenState extends State<BibleReaderScreen> {
   late int _currentChapter;
-  double _fontSizeDelta = 0;
+  late final ScrollController _scrollController;
+  final Map<int, GlobalKey> _verseKeys = {};
+  int? _activeTargetVerse;
 
   int _resolveTotalChapters(BibleProvider provider) {
     if (widget.totalChapters != null &&
@@ -672,23 +679,97 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
   void initState() {
     super.initState();
     _currentChapter = widget.initialChapter;
+    _activeTargetVerse = widget.initialVerse;
+    _scrollController = ScrollController();
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final provider = context.read<BibleProvider>();
+      // Use setVersionSilent() instead of setVersion() to avoid a race
+      // condition: setVersion() triggers its own loadChapter() for the
+      // previously-selected book, which can overwrite the chapter state
+      // that we are about to load for widget.bookId.
+      if (widget.targetVersion != null &&
+          provider.selectedVersion != widget.targetVersion) {
+        provider.setVersionSilent(widget.targetVersion!);
+      }
       final total = _resolveTotalChapters(provider);
       if (_currentChapter > total) {
         setState(() => _currentChapter = total);
       }
+      // Clear any stale GlobalKeys that were registered during the initial
+      // render (when the provider may have had a different chapter cached).
+      // This ensures putIfAbsent() creates fresh keys for the correct chapter,
+      // so _scrollToTargetVerse() can find the right verse widget.
+      _verseKeys.clear();
       await provider.loadChapter(widget.bookId, _currentChapter);
+      // Wait two extra frames: one for the provider state to propagate,
+      // one for Flutter to build the verse widgets and assign GlobalKeys.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToTargetVerse();
+        });
+      });
       // Pre-warm adjacent chapters in background (fire-and-forget)
       provider.prefetchChapter(widget.bookId, _currentChapter, total);
     });
+  }
+
+  void _scrollToTargetVerse() {
+    if (_activeTargetVerse == null) return;
+    _retryScrollToVerse(_activeTargetVerse!, retries: 0);
+  }
+
+  /// Retries scrolling to the target verse up to [maxRetries] times,
+  /// waiting [retryDelayMs] ms between each attempt. This handles cases where
+  /// Flutter needs extra frames to build all verse widgets after the
+  /// provider's AsyncData state propagates (especially slow on iOS simulator).
+  void _retryScrollToVerse(
+    int verseNumber, {
+    required int retries,
+    int maxRetries = 12,
+    int retryDelayMs = 50,
+  }) {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final key = _verseKeys[verseNumber];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(
+          key!.currentContext!,
+          duration: const Duration(milliseconds: 700),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.2,
+        );
+      } else if (retries < maxRetries) {
+        // Key not mounted yet — wait and try again
+        Future.delayed(Duration(milliseconds: retryDelayMs), () {
+          _retryScrollToVerse(
+            verseNumber,
+            retries: retries + 1,
+            maxRetries: maxRetries,
+            retryDelayMs: retryDelayMs,
+          );
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _goToChapter(int chapter) {
     final provider = context.read<BibleProvider>();
     final total = _resolveTotalChapters(provider);
     if (chapter < 1 || chapter > total) return;
-    setState(() => _currentChapter = chapter);
+    // Clear stale verse keys so the new chapter's verses get fresh GlobalKeys
+    // and any pending scroll-to-verse can find the correct widget.
+    setState(() {
+      _currentChapter = chapter;
+      _verseKeys.clear();
+    });
     provider.loadChapter(widget.bookId, chapter).then((_) {
       // Fire-and-forget prefetch of adjacent chapters
       provider.prefetchChapter(widget.bookId, chapter, total);
@@ -696,9 +777,9 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
   }
 
   void _toggleFontSize() {
-    setState(() {
-      _fontSizeDelta = _fontSizeDelta == 0 ? 3.0 : (_fontSizeDelta == 3.0 ? -2.0 : 0.0);
-    });
+    final provider = context.read<BibleProvider>();
+    final current = provider.fontSizeDelta;
+    provider.setFontSize(current == 0 ? 3.0 : (current == 3.0 ? -2.0 : 0.0));
   }
 
   @override
@@ -796,21 +877,31 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
       final chapterData = (provider.chapter as AsyncData<Chapter>).data;
       final verses = chapterData.verses;
 
-      return ListView(
-        padding: EdgeInsets.zero,
+      return Stack(
         children: [
-          const SizedBox(height: 8),
-          PEyebrow('Chapter ${_numberToWords(_currentChapter)}', color: PColors.stone),
-          const SizedBox(height: 8),
-          Text(
-            '${widget.bookName}\nChapter $_currentChapter',
-            style: PType.display.copyWith(color: PColors.ink, fontSize: 32, height: 1.15),
+          ListView(
+            controller: _scrollController,
+            padding: EdgeInsets.zero,
+            children: [
+              const SizedBox(height: 8),
+              PEyebrow('Chapter ${_numberToWords(_currentChapter)}', color: PColors.stone),
+              const SizedBox(height: 8),
+              Text(
+                '${widget.bookName}\nChapter $_currentChapter',
+                style: PType.display.copyWith(color: PColors.ink, fontSize: 32, height: 1.15),
+              ),
+              const SizedBox(height: 32),
+
+              ...verses.map((v) => _buildVerse(provider, v)),
+
+              const SizedBox(height: 120),
+            ],
           ),
-          const SizedBox(height: 32),
-
-          ...verses.map((v) => _buildVerse(provider, v)),
-
-          const SizedBox(height: 120),
+          Positioned(
+            right: 4,
+            top: 100,
+            child: ReadingScrollCapsule(scrollController: _scrollController),
+          ),
         ],
       );
     }
@@ -822,56 +913,101 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
     final isHighlighted = provider.isVerseHighlighted(widget.bookId, _currentChapter, v.number);
     final colorHex = provider.getVerseHighlightColor(widget.bookId, _currentChapter, v.number);
     final colorOption = HighlightColorOption.fromHex(colorHex);
+    final isTarget = _activeTargetVerse == v.number;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          final auth = context.read<AuthProvider>();
-          if (!auth.isAuthenticated) {
-            AuthPromptSheet.show(
-              context,
-              isLoginOnly: false,
-              onSuccess: () {
-                HighlightColorPickerSheet.show(
-                  context,
-                  bookId: widget.bookId,
-                  bookName: widget.bookName,
-                  chapter: _currentChapter,
-                  verse: v,
-                );
-              },
-            );
-          } else {
-            HighlightColorPickerSheet.show(
-              context,
-              bookId: widget.bookId,
-              bookName: widget.bookName,
-              chapter: _currentChapter,
-              verse: v,
-            );
-          }
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: isHighlighted
-              ? const EdgeInsets.symmetric(horizontal: 14, vertical: 12)
-              : const EdgeInsets.symmetric(vertical: 4),
-          decoration: BoxDecoration(
-            color: isHighlighted
-                ? colorOption.fill.withValues(alpha: 0.45)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(PRadius.tile),
-            border: isHighlighted
-                ? Border(left: BorderSide(color: colorOption.accent, width: 3.5))
-                : null,
-          ),
-          child: _buildVerseSpan(
-            '${v.number}',
-            v.text,
-            isHighlighted: isHighlighted,
-            accentColor: isHighlighted ? colorOption.accent : null,
+    return Container(
+      key: _verseKeys.putIfAbsent(v.number, () => GlobalKey()),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () {
+            final auth = context.read<AuthProvider>();
+            if (!auth.isAuthenticated) {
+              AuthPromptSheet.show(
+                context,
+                isLoginOnly: false,
+                onSuccess: () {
+                  HighlightColorPickerSheet.show(
+                    context,
+                    bookId: widget.bookId,
+                    bookName: widget.bookName,
+                    chapter: _currentChapter,
+                    verse: v,
+                  );
+                },
+              );
+            } else {
+              HighlightColorPickerSheet.show(
+                context,
+                bookId: widget.bookId,
+                bookName: widget.bookName,
+                chapter: _currentChapter,
+                verse: v,
+              );
+            }
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: (isHighlighted || isTarget)
+                ? const EdgeInsets.symmetric(horizontal: 14, vertical: 12)
+                : const EdgeInsets.symmetric(vertical: 4),
+            decoration: BoxDecoration(
+              color: isTarget
+                  ? const Color(0x28B58D3D)
+                  : (isHighlighted
+                      ? colorOption.fill.withValues(alpha: 0.45)
+                      : Colors.transparent),
+              borderRadius: BorderRadius.circular(PRadius.tile),
+              border: isTarget
+                  ? Border.all(color: const Color(0xFFB58D3D), width: 1.8)
+                  : (isHighlighted
+                      ? Border(left: BorderSide(color: colorOption.accent, width: 3.5))
+                      : null),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isTarget) ...[
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFB58D3D),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'VERSÍCULO DEL DEVOCIONAL',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Versión KJV',
+                        style: PType.meta.copyWith(
+                          color: const Color(0xFFB58D3D),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                _buildVerseSpan(
+                  '${v.number}',
+                  v.text,
+                  isHighlighted: isHighlighted || isTarget,
+                  accentColor: isTarget ? const Color(0xFFB58D3D) : (isHighlighted ? colorOption.accent : null),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -905,7 +1041,7 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
             text: text,
             style: PType.scripture.copyWith(
               color: PColors.ink,
-              fontSize: 18 + _fontSizeDelta,
+              fontSize: 18 + context.watch<BibleProvider>().fontSizeDelta,
               height: 1.65,
               fontWeight: isHighlighted ? FontWeight.w400 : FontWeight.w300,
             ),

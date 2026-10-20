@@ -46,6 +46,7 @@ class _MockBibleRepository implements BibleRepository {
     required int verseNumber,
     required String verseText,
     String? version,
+    String? colorHex,
   }) async =>
       false;
 }

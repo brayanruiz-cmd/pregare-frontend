@@ -24,6 +24,14 @@ class StreaksProvider extends ChangeNotifier {
 
   AsyncState<List<UserBadgeModel>> _badges = const AsyncInitial();
   AsyncState<List<UserBadgeModel>> get badges => _badges;
+
+  void reset() {
+    _streak = const AsyncInitial();
+    _badges = const AsyncInitial();
+    _monthActivity = const AsyncInitial();
+    _proclaimedDeclarationIds = [];
+    notifyListeners();
+  }
   List<UserBadgeModel> get currentBadges {
     if (_badges is AsyncData) {
       return (_badges as AsyncData).data;

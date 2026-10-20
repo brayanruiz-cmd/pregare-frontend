@@ -4,6 +4,7 @@ import '../../../../core/state/async_state.dart';
 import '../../../../core/theme/app_breakpoints.dart';
 import '../../../../core/theme/tokens.dart';
 import '../../../../core/ui/primitives/primitives.dart';
+import '../../../bible/presentation/screens/bible_screen.dart';
 import '../providers/devotionals_provider.dart';
 import 'devotionals_web_layout.dart';
 
@@ -113,9 +114,59 @@ class _DevotionalsAccordion extends StatelessWidget {
   final bool isExpanded;
   final VoidCallback onTap;
 
+  /// Parses a Bible reference like "John 3:16" or "2 Corinthians 5:17" and
+  /// opens the [BibleReaderScreen] locked to KJV at the correct verse.
+  void _openVerseInBible(BuildContext context, String reference) {
+    final ref = reference.trim();
+    if (ref.isEmpty) return;
+
+    // Extract verse number: everything after the last colon
+    final colonIdx = ref.lastIndexOf(':');
+    int? verseNumber;
+    String bookAndChapter = ref;
+    if (colonIdx != -1) {
+      verseNumber = int.tryParse(ref.substring(colonIdx + 1).trim().split(' ').first);
+      bookAndChapter = ref.substring(0, colonIdx).trim();
+    }
+
+    // Separate chapter from book name
+    final parts = bookAndChapter.split(' ');
+    int chapter = 1;
+    String bookName = bookAndChapter;
+    if (parts.length >= 2) {
+      final maybeCh = int.tryParse(parts.last);
+      if (maybeCh != null) {
+        chapter = maybeCh;
+        bookName = parts.sublist(0, parts.length - 1).join(' ');
+      }
+    }
+
+    // Build a URL-safe book ID
+    var bookId = bookName.toLowerCase().replaceAll(' ', '').replaceAll('-', '');
+    if (bookId == 'psalm') bookId = 'psalms';
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BibleReaderScreen(
+          bookId: bookId,
+          bookName: bookName,
+          initialChapter: chapter,
+          initialVerse: verseNumber,
+          targetVersion: 'KJV',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final d = devotional;
+    // Resolve verse reference for navigation
+    final String verseRef = (d.effectiveVerseReference != null &&
+            (d.effectiveVerseReference as String).trim().isNotEmpty)
+        ? (d.effectiveVerseReference as String).trim()
+        : '';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
@@ -165,15 +216,78 @@ class _DevotionalsAccordion extends StatelessWidget {
               if (isExpanded) ...[
                 const SizedBox(height: 16),
                 if (d.verse != null) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: const BoxDecoration(
-                      border: Border(left: BorderSide(color: PColors.bone, width: 2.0)),
-                    ),
-                    child: Text(
-                      d.verse!,
-                      style: PType.scripture.copyWith(fontSize: 17, height: 1.4),
+                  // Tappable verse card — opens Bible reader in KJV at the verse
+                  GestureDetector(
+                    onTap: verseRef.isNotEmpty
+                        ? () => _openVerseInBible(context, verseRef)
+                        : null,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      decoration: BoxDecoration(
+                        border: const Border(left: BorderSide(color: PColors.bone, width: 2.0)),
+                        color: verseRef.isNotEmpty
+                            ? Colors.white.withValues(alpha: 0.04)
+                            : Colors.transparent,
+                        borderRadius: const BorderRadius.only(
+                          topRight: Radius.circular(6),
+                          bottomRight: Radius.circular(6),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            d.verse!,
+                            style: PType.scripture.copyWith(fontSize: 17, height: 1.4),
+                          ),
+                          if (verseRef.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '— $verseRef',
+                                  style: PType.meta.copyWith(
+                                    color: PColors.bone70,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.15),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.menu_book_rounded,
+                                        size: 11,
+                                        color: PColors.bone45,
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        'Abrir en Biblia · KJV',
+                                        style: PType.meta.copyWith(
+                                          color: PColors.bone45,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),

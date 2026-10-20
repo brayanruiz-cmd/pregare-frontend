@@ -5,7 +5,9 @@ import '../../domain/models/auth_session.dart';
 import '../../domain/ports/auth_repository.dart';
 
 class AuthProvider extends ChangeNotifier {
-  AuthProvider({required AuthRepository repository}) : _repository = repository;
+  AuthProvider({required AuthRepository repository}) : _repository = repository {
+    restoreSession();
+  }
 
   final AuthRepository _repository;
 
@@ -18,6 +20,22 @@ class AuthProvider extends ChangeNotifier {
 
   String? _error;
   String? get error => _error;
+
+  Future<void> restoreSession() async {
+    try {
+      final session = await _repository.getStoredSession();
+      if (session != null) {
+        _session = AsyncData(session);
+        notifyListeners();
+      } else {
+        _session = const AsyncInitial();
+        notifyListeners();
+      }
+    } catch (_) {
+      _session = const AsyncInitial();
+      notifyListeners();
+    }
+  }
 
   Future<void> login({
     required String email,

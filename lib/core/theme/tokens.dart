@@ -180,6 +180,24 @@ abstract final class PTheme {
           bodyColor: PColors.bone,
           displayColor: PColors.bone,
         ),
+        snackBarTheme: SnackBarThemeData(
+          // Charcoal con tinte cálido — visible sobre fondo ink y bone
+          backgroundColor: const Color(0xFF2A2722),
+          contentTextStyle: GoogleFonts.hankenGrotesk(
+            color: PColors.bone,
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
+            height: 1.4,
+          ),
+          actionTextColor: PColors.bone70,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(PRadius.chip),
+            side: const BorderSide(color: Color(0x33F4F2EC), width: 0.8),
+          ),
+          elevation: 8,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        ),
       );
 
   /// Para el lector, selección de libro/capítulo y detalles de tema y devocional.

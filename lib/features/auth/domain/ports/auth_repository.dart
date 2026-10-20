@@ -24,4 +24,5 @@ abstract class AuthRepository {
   Future<void> updateGender({required String gender});
 
   Future<String?> getStoredToken();
+  Future<AuthSession?> getStoredSession();
 }

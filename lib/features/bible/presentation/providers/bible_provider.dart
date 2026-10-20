@@ -33,6 +33,10 @@ class BibleProvider extends ChangeNotifier {
   String _selectedVersion = 'RVR1960';
   String get selectedVersion => _selectedVersion;
 
+  // Font size delta: -2=small, 0=medium, 3=large
+  double _fontSizeDelta = 0;
+  double get fontSizeDelta => _fontSizeDelta;
+
   String? _selectedBook;
   String? get selectedBook => _selectedBook;
 
@@ -87,6 +91,13 @@ class BibleProvider extends ChangeNotifier {
       }
       notifyListeners();
     } catch (_) {}
+  }
+
+  void clearHighlights() {
+    _highlights = [];
+    _highlightedVerses.clear();
+    _highlightsMap.clear();
+    notifyListeners();
   }
 
   Future<bool> setVerseHighlight(
@@ -329,6 +340,38 @@ class BibleProvider extends ChangeNotifier {
     if (_selectedBook != null) {
       loadChapter(_selectedBook!, _selectedChapter);
     }
+  }
+
+  /// Changes the selected version and clears the chapter cache WITHOUT
+  /// triggering loadChapter or loadBooks. Use this when the caller will
+  /// immediately call loadChapter itself (e.g. BibleReaderScreen navigating
+  /// to a specific verse) to avoid a race condition between the side-effect
+  /// loadChapter (for the old book) and the caller's loadChapter (for the
+  /// new book).
+  void setVersionSilent(String version) {
+    _selectedVersion = version;
+    clearChapterCache();
+    notifyListeners();
+  }
+
+  /// Sets the font size delta from Preferences (small=-2, medium=0, large=3)
+  void setFontSize(double delta) {
+    _fontSizeDelta = delta;
+    notifyListeners();
+  }
+
+  /// Applies persisted user preferences (called after login/load).
+  /// [version] — preferred translation id (e.g. 'KJV', 'RVR1960')
+  /// [textSize] — 'small' | 'medium' | 'large'
+  void applyPreferences({String? version, String? textSize}) {
+    if (version != null && version.isNotEmpty) {
+      _selectedVersion = version;
+      clearChapterCache();
+    }
+    if (textSize != null) {
+      _fontSizeDelta = textSize == 'small' ? -2.0 : (textSize == 'large' ? 3.0 : 0.0);
+    }
+    notifyListeners();
   }
 
   // ────────────────────────────────────────────────────────────────────────

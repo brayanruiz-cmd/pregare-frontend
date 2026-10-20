@@ -186,9 +186,19 @@ class _Greeting extends StatelessWidget {
     final auth = context.watch<AuthProvider>();
     final name = auth.isAuthenticated ? auth.currentSession?.user.name : null;
 
+    final hour = DateTime.now().hour;
+    final String greetingPrefix;
+    if (hour >= 5 && hour < 12) {
+      greetingPrefix = 'Good morning';
+    } else if (hour >= 12 && hour < 19) {
+      greetingPrefix = 'Good afternoon';
+    } else {
+      greetingPrefix = 'Good evening';
+    }
+
     final greetingText = name != null && name.isNotEmpty
-        ? (isEvening ? 'Good evening,\n$name.' : 'Good morning,\n$name.')
-        : (isEvening ? 'Good evening.' : 'Good morning.');
+        ? '$greetingPrefix,\n$name.'
+        : '$greetingPrefix.';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

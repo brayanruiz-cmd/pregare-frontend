@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/tokens.dart';
 import '../../../../core/ui/primitives/primitives.dart';
+import '../../../../core/ui/molecules/reading_scroll_capsule.dart';
 import '../../../bible/presentation/screens/bible_screen.dart';
 import '../../domain/models/topic.dart';
 
@@ -24,17 +25,21 @@ class TopicDetailScreen extends StatefulWidget {
 class _TopicDetailScreenState extends State<TopicDetailScreen> {
   bool _isBookMode = true;
   int _currentPage = 0;
+  int _maxReadPage = 0; // highest page index the user has visited
   late final PageController _pageController;
+  late final ScrollController _continuousScrollController;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
+    _continuousScrollController = ScrollController();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _continuousScrollController.dispose();
     super.dispose();
   }
 
@@ -50,19 +55,12 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
         SnackBar(
           content: Text(
             '¡Has completado la lectura de "${widget.topic.title}"!',
-            style: PType.uiStrong.copyWith(color: PColors.bone, fontSize: 13),
           ),
-          backgroundColor: PColors.inkDeep,
-          behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(PRadius.chip),
-          ),
         ),
       );
     }
   }
-
   void _prevPage() {
     if (_currentPage > 0) {
       _pageController.previousPage(
@@ -252,14 +250,19 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
           padding: const EdgeInsets.symmetric(horizontal: PSpace.gutterLight, vertical: 8),
           child: Row(
             children: List.generate(totalPages, (index) {
-              final isPassed = index <= _currentPage;
+              final isPassed = index < _currentPage;
+              final isCurrent = index == _currentPage;
               return Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 240),
                   height: 3,
                   margin: const EdgeInsets.symmetric(horizontal: 2),
                   decoration: BoxDecoration(
-                    color: isPassed ? PColors.clay : PColors.ink10,
+                    color: isCurrent
+                        ? PColors.clay
+                        : isPassed
+                            ? PColors.clay.withValues(alpha: 0.35)
+                            : PColors.ink10,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -273,7 +276,10 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
           child: PageView(
             controller: _pageController,
             physics: const BouncingScrollPhysics(),
-            onPageChanged: (i) => setState(() => _currentPage = i),
+            onPageChanged: (i) => setState(() {
+              _currentPage = i;
+              if (i > _maxReadPage) _maxReadPage = i;
+            }),
             children: [
               // Página 1: Portada & Video
               _buildCoverPage(totalPages),
@@ -281,8 +287,10 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
               // Páginas 2..N: Enseñanza
               ...readingChunks.asMap().entries.map((entry) {
                 final chunkIndex = entry.key + 1;
+                final pageIndex = entry.key + 1; // 0-based page index in PageView
                 final text = entry.value;
-                return _buildReadingPage(chunkIndex, text, readingChunks.length);
+                final isRead = pageIndex < _currentPage;
+                return _buildReadingPage(chunkIndex, text, readingChunks.length, isRead: isRead);
               }),
 
               // Página N+1: Escritura Sagrada
@@ -397,8 +405,10 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
   }
 
   /// Página de Lectura de la Enseñanza
-  Widget _buildReadingPage(int chapterNumber, String text, int totalChapters) {
-    return SingleChildScrollView(
+  Widget _buildReadingPage(int chapterNumber, String text, int totalChapters, {bool isRead = false}) {
+    return Stack(
+      children: [
+        SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
         PSpace.gutterLight,
@@ -466,6 +476,47 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
           ),
         ],
       ),
+        ),
+        // "Ya leído" indicator shown when user has moved past this page
+        if (isRead)
+          Positioned(
+            top: 12,
+            right: PSpace.gutterLight,
+            child: AnimatedOpacity(
+              opacity: isRead ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 400),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF4CAF50).withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 11,
+                      color: Color(0xFF4CAF50),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Leído',
+                      style: PType.meta.copyWith(
+                        color: const Color(0xFF4CAF50),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -741,93 +792,113 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     final hasScripture = topic.scriptureQuote != null && topic.scriptureQuote!.trim().isNotEmpty;
     final hasTips = topic.supportTips.isNotEmpty;
 
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: PSpace.gutterLight, vertical: 12),
+    return Stack(
       children: [
-        PEyebrow('Topic · ${topic.tag}', color: PColors.stone),
-        const SizedBox(height: 12),
-        Text(
-          topic.title,
-          style: PType.display.copyWith(
-            color: PColors.ink,
-            fontSize: 28,
-            height: 1.15,
-          ),
-        ),
-        if (topic.subtitle != null && topic.subtitle!.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            topic.subtitle!,
-            style: PType.meta.copyWith(color: PColors.stone, fontSize: 13),
-          ),
-        ],
-        const SizedBox(height: 20),
-
-        PYoutubePreviewCard(
-          youtubeUrl: topic.youtubeUrl,
-          youtubeVideoId: topic.youtubeVideoId,
-          title: topic.title,
-          durationMinutes: topic.videoDurationMinutes,
-          height: 210,
-        ),
-        const SizedBox(height: 24),
-
-        Text(
-          topic.description,
-          style: PType.body.copyWith(color: PColors.ink, height: 1.65, fontSize: 16),
-        ),
-        const SizedBox(height: 24),
-
-        if (hasScripture) ...[
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: PColors.cardFill,
-              borderRadius: BorderRadius.circular(PRadius.panel),
-              border: Border.all(color: PColors.stone.withValues(alpha: 0.25)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '"${topic.scriptureQuote!.trim()}"',
-                  style: PType.scripture.copyWith(color: PColors.ink, fontSize: 16, height: 1.45),
-                ),
-                if (topic.scriptureReference != null && topic.scriptureReference!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '— ${topic.scriptureReference!.trim()}',
-                    style: PType.meta.copyWith(color: PColors.stone, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 28),
-        ],
-
-        if (hasTips) ...[
-          PEyebrow('Practise this week', color: PColors.stone),
-          const SizedBox(height: 16),
-          ...topic.supportTips.asMap().entries.map((e) {
-            final num = (e.key + 1).toString().padLeft(2, '0');
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(num, style: PType.meta.copyWith(color: PColors.stone, fontWeight: FontWeight.w600)),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(e.value, style: PType.body.copyWith(color: PColors.ink, height: 1.5)),
-                  ),
-                ],
+        ListView(
+          controller: _continuousScrollController,
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: PSpace.gutterLight, vertical: 12),
+          children: [
+            PEyebrow('Topic · ${topic.tag}', color: PColors.stone),
+            const SizedBox(height: 12),
+            Text(
+              topic.title,
+              style: PType.display.copyWith(
+                color: PColors.ink,
+                fontSize: 28,
+                height: 1.15,
               ),
-            );
-          }),
-        ],
-        const SizedBox(height: 40),
+            ),
+            if (topic.subtitle != null && topic.subtitle!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                topic.subtitle!,
+                style: PType.meta.copyWith(color: PColors.stone, fontSize: 13),
+              ),
+            ],
+            const SizedBox(height: 20),
+
+            PYoutubePreviewCard(
+              youtubeUrl: topic.youtubeUrl,
+              youtubeVideoId: topic.youtubeVideoId,
+              title: topic.title,
+              durationMinutes: topic.videoDurationMinutes,
+              height: 210,
+            ),
+            const SizedBox(height: 24),
+
+            Text(
+              topic.description,
+              style: PType.body.copyWith(color: PColors.ink, height: 1.65, fontSize: 16),
+            ),
+            const SizedBox(height: 24),
+
+            if (hasScripture) ...[
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: PColors.cardFill,
+                  borderRadius: BorderRadius.circular(PRadius.panel),
+                  border: Border.all(color: PColors.stone.withValues(alpha: 0.25)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '"${topic.scriptureQuote!.trim()}"',
+                      style: PType.scripture.copyWith(color: PColors.ink, fontSize: 16, height: 1.45),
+                    ),
+                    if (topic.scriptureReference != null && topic.scriptureReference!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '— ${topic.scriptureReference!.trim()}',
+                        style: PType.meta.copyWith(color: PColors.stone, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+            ],
+
+            if (hasTips) ...[
+              PEyebrow('Practise this week', color: PColors.stone),
+              const SizedBox(height: 16),
+              ...topic.supportTips.asMap().entries.map((e) {
+                final num = (e.key + 1).toString().padLeft(2, '0');
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(num, style: PType.meta.copyWith(color: PColors.stone, fontWeight: FontWeight.w600)),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(e.value, style: PType.body.copyWith(color: PColors.ink, height: 1.5)),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+            const SizedBox(height: 40),
+          ],
+        ),
+
+        // Floating reading progress capsule — right edge
+        Positioned(
+          right: 6,
+          top: 80,
+          child: ReadingScrollCapsule(
+            scrollController: _continuousScrollController,
+            capsuleHeight: 120,
+            capsuleWidth: 18,
+            thumbHeight: 30,
+            dotCount: 5,
+            thumbColor: PColors.clay,
+            backgroundColor: PColors.ink10,
+          ),
+        ),
       ],
     );
   }

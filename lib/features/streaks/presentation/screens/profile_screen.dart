@@ -5,8 +5,10 @@ import '../../../../core/ui/organisms/main_shell.dart';
 import '../../../../core/ui/primitives/primitives.dart';
 import '../../../../core/ui/molecules/auth_prompt_sheet.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../auth/infrastructure/adapters/user_preferences_api_adapter.dart';
 import '../../../onboarding/presentation/providers/onboarding_provider.dart';
 import '../../../notifications/presentation/providers/notifications_provider.dart';
+import '../../../bible/presentation/providers/bible_provider.dart';
 import '../../domain/models/streak_activity.dart';
 import '../../domain/models/user_badge_model.dart';
 import '../providers/streaks_provider.dart';
@@ -25,9 +27,8 @@ class ProfileScreen extends StatelessWidget {
     final auth = context.watch<AuthProvider>();
     final onboarding = context.watch<OnboardingProvider>();
     final streaks = context.watch<StreaksProvider>();
-    final streak = streaks.currentStreak;
-
     final isAuthenticated = auth.isAuthenticated;
+    final streak = isAuthenticated ? streaks.currentStreak : null;
     final rawName = isAuthenticated ? auth.currentSession?.user.name : null;
     final name =
         (rawName != null && rawName.isNotEmpty) ? rawName : 'Invitado';
@@ -95,9 +96,13 @@ class ProfileScreen extends StatelessWidget {
           // ── Tarjeta de stats conectada a StreaksProvider ──────────────
           GestureDetector(
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const GrowthScreen()),
-              );
+              if (isAuthenticated) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const GrowthScreen()),
+                );
+              } else {
+                AuthPromptSheet.show(context);
+              }
             },
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
@@ -110,17 +115,17 @@ class ProfileScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   _StatColumn(
-                    number: '${streak?.currentStreak ?? 0}',
+                    number: isAuthenticated ? '${streak?.currentStreak ?? 0}' : '0',
                     label: 'Day streak',
                   ),
                   Container(width: 1, height: 28, color: PColors.hairline),
                   _StatColumn(
-                    number: '${streak?.longestStreak ?? 0}',
+                    number: isAuthenticated ? '${streak?.longestStreak ?? 0}' : '0',
                     label: 'Best',
                   ),
                   Container(width: 1, height: 28, color: PColors.hairline),
                   _StatColumn(
-                    number: '${streak?.totalDaysActive ?? 0}',
+                    number: isAuthenticated ? '${streak?.totalDaysActive ?? 0}' : '0',
                     label: 'Total days',
                   ),
                 ],
@@ -139,21 +144,21 @@ class ProfileScreen extends StatelessWidget {
           PListRow(
             title: 'Saved declarations',
             trailing: Text(
-              '${streak?.savedDeclarationsCount ?? 0}',
+              isAuthenticated ? '${streak?.savedDeclarationsCount ?? 0}' : '0',
               style: PType.meta.copyWith(color: PColors.bone55),
             ),
           ),
           PListRow(
             title: 'Highlights',
             trailing: Text(
-              '${streak?.highlightsCount ?? 0}',
+              isAuthenticated ? '${streak?.highlightsCount ?? 0}' : '0',
               style: PType.meta.copyWith(color: PColors.bone55),
             ),
           ),
           PListRow(
             title: 'Completed devotionals',
             trailing: Text(
-              '${streak?.completedDevotionalsCount ?? 0}',
+              isAuthenticated ? '${streak?.completedDevotionalsCount ?? 0}' : '0',
               style: PType.meta.copyWith(color: PColors.bone55),
             ),
           ),
@@ -162,7 +167,7 @@ class ProfileScreen extends StatelessWidget {
           // ── Badges & Achievements ─────────────────────────────────────
           const PEyebrow('Achievements'),
           const SizedBox(height: 14),
-          _BadgesSection(),
+          _BadgesSection(isAuthenticated: isAuthenticated),
           const SizedBox(height: 36),
 
           // ── Sección SETTINGS ───────────────────────────────────────────
@@ -170,15 +175,7 @@ class ProfileScreen extends StatelessWidget {
 
           const SizedBox(height: 4),
           PListRow(
-            title: 'Preferences',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PreferencesScreen()),
-              );
-            },
-          ),
-          PListRow(
-            title: 'Notifications',
+            title: 'Preferences & Notifications',
             meta: onboarding.reminderTime,
             onTap: () {
               Navigator.of(context).push(
@@ -254,6 +251,8 @@ class ProfileScreen extends StatelessWidget {
       final messenger = ScaffoldMessenger.of(context);
       await context.read<AuthProvider>().logout();
       if (context.mounted) {
+        context.read<StreaksProvider>().reset();
+        context.read<BibleProvider>().clearHighlights();
         await context.read<OnboardingProvider>().clearUserData();
       }
       if (context.mounted) {
@@ -461,7 +460,7 @@ class _StatColumn extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pantalla 24 — Preferences
+// Pantalla 24 — Preferences & Notifications
 // ─────────────────────────────────────────────────────────────────────────────
 class PreferencesScreen extends StatefulWidget {
   const PreferencesScreen({super.key});
@@ -471,7 +470,9 @@ class PreferencesScreen extends StatefulWidget {
 }
 
 class _PreferencesScreenState extends State<PreferencesScreen> {
-  double _textSize = 0.5;
+  bool _savingGender = false;
+  bool _savingTopics = false;
+  bool _savingTranslation = false;
 
   @override
   void initState() {
@@ -481,16 +482,167 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
     });
   }
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  Future<void> _patchPreference(Map<String, dynamic> update) async {
+    try {
+      await context.read<UserPreferencesApiAdapter>().patchPreferences(update);
+    } catch (_) {
+      // Silently swallow — local state is already updated optimistically
+    }
+  }
+
+  // ── Gender ─────────────────────────────────────────────────────────────────
+
+  Future<void> _toggleGender() async {
+    final onboarding = context.read<OnboardingProvider>();
+    final newGender = onboarding.gender == 'mujeres' ? 'hombres' : 'mujeres';
+    onboarding.setGender(newGender);
+    // Persist to SharedPrefs (already done inside setGender)
+    // Also persist to backend
+    setState(() => _savingGender = true);
+    await _patchPreference({'writtenFor': newGender});
+    if (mounted) setState(() => _savingGender = false);
+  }
+
+  // ── Topics ──────────────────────────────────────────────────────────────────
+
+  Future<void> _toggleTopic(String topic) async {
+    final onboarding = context.read<OnboardingProvider>();
+    onboarding.toggleTopic(topic);
+    setState(() => _savingTopics = true);
+    await _patchPreference({'selectedTopics': onboarding.selectedTopics});
+    if (mounted) setState(() => _savingTopics = false);
+  }
+
+  // ── Bible translation ────────────────────────────────────────────────────
+
+  void _showTranslationPicker() {
+    final bible = context.read<BibleProvider>();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: PColors.inkDeep,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(PRadius.flip)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const PEyebrow('Bible Translation'),
+                const SizedBox(height: 16),
+                for (final v in [
+                  ('KJV', 'King James Version'),
+                  ('RVR1960', 'Reina-Valera 1960'),
+                ]) ...[  
+                  PListRow(
+                    title: v.$2,
+                    meta: v.$1,
+                    showChevron: false,
+                    trailing: bible.selectedVersion == v.$1
+                        ? const Icon(Icons.check_rounded, color: PColors.bone, size: 18)
+                        : null,
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      setState(() => _savingTranslation = true);
+                      bible.setVersion(v.$1);
+                      await _patchPreference({'preferredTranslation': v.$1});
+                      if (mounted) setState(() => _savingTranslation = false);
+                    },
+                  ),
+                ],
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Text size ────────────────────────────────────────────────────────────
+
+  String _textSizeLabel(double delta) {
+    if (delta <= -1) return 'Small';
+    if (delta >= 2) return 'Large';
+    return 'Medium';
+  }
+
+  double _deltaToSlider(double delta) {
+    if (delta <= -1) return 0.0;
+    if (delta >= 2) return 1.0;
+    return 0.5;
+  }
+
+  void _onTextSizeChanged(double sliderVal) {
+    final bible = context.read<BibleProvider>();
+    if (sliderVal < 0.33) {
+      bible.setFontSize(-2.0);
+      _patchPreference({'textSize': 'small'});
+    } else if (sliderVal < 0.66) {
+      bible.setFontSize(0.0);
+      _patchPreference({'textSize': 'medium'});
+    } else {
+      bible.setFontSize(3.0);
+      _patchPreference({'textSize': 'large'});
+    }
+  }
+
+  // ── Notification time ────────────────────────────────────────────────────
+
+  Future<void> _pickNotificationTime() async {
+    final notifProvider = context.read<NotificationsProvider>();
+    final current = notifProvider.currentPreferences?.reminderTime ?? '6:15 AM';
+    // Parse existing time
+    final parts = current.replaceAll(' AM', '').replaceAll(' PM', '').split(':');
+    final isPM = current.contains('PM');
+    int hour = int.tryParse(parts[0]) ?? 6;
+    final minute = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 15;
+    if (isPM && hour != 12) hour += 12;
+    if (!isPM && hour == 12) hour = 0;
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: hour, minute: minute),
+      builder: (context, child) => Theme(
+        data: ThemeData.dark().copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: PColors.bone,
+            onPrimary: PColors.ink,
+            surface: PColors.inkDeep,
+            onSurface: PColors.bone,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+
+    if (picked != null && mounted) {
+      final formatted = picked.format(context);
+      // Update NotificationsProvider (which calls PATCH /notifications/preferences)
+      notifProvider.updatePreference(reminderTime: formatted);
+      // Also update OnboardingProvider's local value so it shows in profile header
+      context.read<OnboardingProvider>().setReminderTime(formatted);
+    }
+  }
+
+  // ── Build ────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final onboarding = context.watch<OnboardingProvider>();
     final notifProvider = context.watch<NotificationsProvider>();
     final notifPrefs = notifProvider.currentPreferences;
+    final bible = context.watch<BibleProvider>();
 
     final genderLabel = onboarding.gender == 'hombres' ? 'Men' : 'Women';
-    final topics = onboarding.selectedTopics.isNotEmpty
-        ? onboarding.selectedTopics
-        : ['Faith', 'Strength', 'Peace'];
+    final allTopics = onboarding.focusAreas.isNotEmpty
+        ? onboarding.focusAreas.map((f) => f.name).toList()
+        : ['Faith', 'Strength', 'Peace', 'Healing', 'Purpose', 'Gratitude'];
 
     return PScreen(
       background: const PScreenBackground.ink(),
@@ -502,11 +654,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
           children: [
             GestureDetector(
               onTap: () => Navigator.of(context).pop(),
-              child: const Icon(
-                Icons.chevron_left_rounded,
-                color: PColors.bone,
-                size: 28,
-              ),
+              child: const Icon(Icons.chevron_left_rounded, color: PColors.bone, size: 28),
             ),
             const Expanded(
               child: Center(
@@ -528,64 +676,91 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
       body: ListView(
         padding: EdgeInsets.zero,
         children: [
-          // ── Declarations ───────────────────────────────────────────────
+
+          // ── Declarations ────────────────────────────────────────────────
           const PEyebrow('Declarations'),
           const SizedBox(height: 4),
           PListRow(
             title: 'Written for',
-            meta: genderLabel,
-            onTap: () {
-              final newGender =
-                  onboarding.gender == 'mujeres' ? 'hombres' : 'mujeres';
-              onboarding.setGender(newGender);
-            },
+            meta: _savingGender ? 'Saving…' : genderLabel,
+            onTap: _toggleGender,
+            trailing: const Icon(Icons.swap_horiz_rounded, color: PColors.bone45, size: 18),
           ),
           const SizedBox(height: 20),
+
+          // Topics
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Topics', style: PType.rowTitle),
-              Text(
-                '${topics.length} selected',
-                style: PType.uiStrong.copyWith(color: PColors.bone70, fontSize: 13),
-              ),
+              if (_savingTopics)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: PColors.bone45),
+                )
+              else
+                Text(
+                  '${onboarding.selectedTopics.length} selected',
+                  style: PType.uiStrong.copyWith(color: PColors.bone70, fontSize: 13),
+                ),
             ],
           ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: topics.map((t) {
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  color: PColors.glassFill,
-                  borderRadius: BorderRadius.circular(PRadius.chip),
-                  border: Border.all(color: PColors.hairline),
+            children: allTopics.map((t) {
+              final isSelected = onboarding.isTopicSelected(t);
+              return GestureDetector(
+                onTap: () => _toggleTopic(t),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: isSelected ? PColors.bone.withValues(alpha: 0.15) : PColors.glassFill,
+                    borderRadius: BorderRadius.circular(PRadius.chip),
+                    border: Border.all(
+                      color: isSelected ? PColors.bone55 : PColors.hairline,
+                      width: isSelected ? 1.5 : 1.0,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isSelected) ...[
+                        const Icon(Icons.check_rounded, color: PColors.bone, size: 12),
+                        const SizedBox(width: 5),
+                      ],
+                      Text(
+                        t,
+                        style: PType.meta.copyWith(
+                          color: isSelected ? PColors.bone : PColors.bone55,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Text(t, style: PType.meta.copyWith(color: PColors.bone)),
               );
             }).toList(),
           ),
           const SizedBox(height: 36),
 
-          // ── Reading ────────────────────────────────────────────────────
+          // ── Reading ──────────────────────────────────────────────────────
           const PEyebrow('Reading'),
           const SizedBox(height: 4),
-          PListRow(title: 'Bible translation', meta: 'NIV'),
+          PListRow(
+            title: 'Bible translation',
+            meta: _savingTranslation ? 'Saving…' : bible.selectedVersion,
+            onTap: _showTranslationPicker,
+          ),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Text size', style: PType.rowTitle),
-              Text(
-                _textSize < 0.33
-                    ? 'Small'
-                    : _textSize < 0.66
-                        ? 'Medium'
-                        : 'Large',
-                style: PType.meta,
-              ),
+              Text(_textSizeLabel(bible.fontSizeDelta), style: PType.meta),
             ],
           ),
           SliderTheme(
@@ -596,13 +771,13 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
               overlayShape: SliderComponentShape.noOverlay,
             ),
             child: Slider(
-              value: _textSize,
-              onChanged: (val) => setState(() => _textSize = val),
+              value: _deltaToSlider(bible.fontSizeDelta),
+              onChanged: _onTextSizeChanged,
             ),
           ),
           const SizedBox(height: 36),
 
-          // ── Daily Reminder ─────────────────────────────────────────────
+          // ── Daily Reminder ───────────────────────────────────────────────
           const PEyebrow('Daily Reminder'),
           const SizedBox(height: 4),
           Container(
@@ -616,9 +791,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                 Text('Morning notification', style: PType.rowTitle),
                 Switch(
                   value: notifPrefs?.declarations ?? true,
-                  onChanged: (val) {
-                    notifProvider.updatePreference(declarations: val);
-                  },
+                  onChanged: (val) => notifProvider.updatePreference(declarations: val),
                   activeThumbColor: PColors.bone,
                   activeTrackColor: PColors.bone50,
                   inactiveThumbColor: PColors.bone45,
@@ -630,6 +803,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
           PListRow(
             title: 'Time',
             meta: notifPrefs?.reminderTime ?? onboarding.reminderTime,
+            onTap: _pickNotificationTime,
+            trailing: const Icon(Icons.access_time_rounded, color: PColors.bone45, size: 18),
           ),
           Container(
             padding: const EdgeInsets.symmetric(vertical: PSpace.rowPaddingY),
@@ -642,9 +817,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                 Text('Streak reminder', style: PType.rowTitle),
                 Switch(
                   value: notifPrefs?.streakReminder ?? true,
-                  onChanged: (val) {
-                    notifProvider.updatePreference(streakReminder: val);
-                  },
+                  onChanged: (val) => notifProvider.updatePreference(streakReminder: val),
                   activeThumbColor: PColors.bone,
                   activeTrackColor: PColors.bone50,
                   inactiveThumbColor: PColors.bone45,
@@ -890,10 +1063,35 @@ class _MonthDotGrid extends StatelessWidget {
 // Horizontal scroll of badge cards — data from StreaksProvider (backend)
 // ─────────────────────────────────────────────────────────────────────────────
 class _BadgesSection extends StatelessWidget {
-  const _BadgesSection();
+  const _BadgesSection({required this.isAuthenticated});
+  final bool isAuthenticated;
 
   @override
   Widget build(BuildContext context) {
+    if (!isAuthenticated) {
+      return Container(
+        height: 90,
+        decoration: BoxDecoration(
+          color: PColors.glassFill,
+          borderRadius: BorderRadius.circular(PRadius.tile),
+          border: Border.all(color: PColors.hairline),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_outline_rounded, color: PColors.bone45, size: 20),
+              const SizedBox(height: 6),
+              Text(
+                'Sign in to track achievements and streak',
+                style: PType.meta.copyWith(color: PColors.bone62, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final streaks = context.watch<StreaksProvider>();
     final badges = streaks.currentBadges;
 

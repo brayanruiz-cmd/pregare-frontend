@@ -23,9 +23,12 @@ import 'features/notifications/infrastructure/adapters/notifications_api_adapter
 import 'features/notifications/presentation/providers/notifications_provider.dart';
 import 'features/admin/infrastructure/adapters/admin_api_adapter.dart';
 import 'features/admin/presentation/providers/admin_provider.dart';
+import 'features/auth/infrastructure/adapters/user_preferences_api_adapter.dart';
+import 'core/infrastructure/offline/offline_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await OfflineManager.instance.init();
   runApp(const PregareApp());
 }
 
@@ -42,7 +45,6 @@ class PregareApp extends StatelessWidget {
     );
     final httpClient = PregareHttpClient(baseUrl: baseUrl);
     final authRepository = AuthApiAdapter(httpClient: httpClient);
-    authRepository.getStoredToken();
     final homeRepository = HomeApiAdapter(httpClient: httpClient);
     final bibleRepository = BibleApiAdapter(httpClient: httpClient);
     final declarationsRepository = DeclarationsApiAdapter(httpClient: httpClient);
@@ -51,6 +53,7 @@ class PregareApp extends StatelessWidget {
     final streaksRepository = StreaksApiAdapter(httpClient: httpClient);
     final notificationsRepository = NotificationsApiAdapter(httpClient: httpClient);
     final adminRepository = AdminApiAdapter(httpClient: httpClient);
+    final userPrefsAdapter = UserPreferencesApiAdapter(httpClient: httpClient);
 
     return MultiProvider(
       providers: [
@@ -84,6 +87,7 @@ class PregareApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => AdminProvider(repository: adminRepository),
         ),
+        Provider<UserPreferencesApiAdapter>.value(value: userPrefsAdapter),
       ],
       child: MaterialApp(
         title: 'Pregare',
