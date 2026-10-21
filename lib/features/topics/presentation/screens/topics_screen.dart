@@ -262,27 +262,98 @@ class _TopicsContent extends StatelessWidget {
           ),
           const SizedBox(height: 28),
 
-          // ── Numbered topic list ───────────────────────────────────────────
-          ...topics.asMap().entries.map((e) {
-            final idx = (e.key + 1).toString().padLeft(2, '0');
-            return _topicRow(idx, e.value);
-          }),
+          // ── Numbered topic grid (Screen 19) ────────────────────────────────
+          const SizedBox(height: 28),
+          const PEyebrow('Topics'),
+          const SizedBox(height: 14),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: topics.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.32,
+            ),
+            itemBuilder: (context, index) {
+              final topic = topics[index];
+              final numStr = (index + 1).toString().padLeft(2, '0');
+              final count = topic.supportTips.isNotEmpty
+                  ? topic.supportTips.length
+                  : 4;
+
+              return PInteractive(
+                onTap: () => onTopicTap(topic),
+                builder: (context, isHovered, isPressed) => Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isHovered
+                        ? PColors.glassFill.withValues(alpha: 0.22)
+                        : PColors.glassFill,
+                    borderRadius: BorderRadius.circular(PRadius.panel),
+                    border: Border.all(
+                      color: isHovered ? PColors.bone50 : PColors.hairline,
+                      width: 1.0,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            numStr,
+                            style: PType.meta.copyWith(
+                              color: PColors.bone45,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            '$count',
+                            style: PType.meta.copyWith(
+                              color: PColors.clay,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            topic.title,
+                            style: PType.uiStrong.copyWith(
+                              fontSize: 15,
+                              color: PColors.bone,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            topic.tag.isNotEmpty ? topic.tag : 'Topic',
+                            style: PType.meta.copyWith(
+                              fontSize: 10,
+                              color: PColors.bone55,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
-    );
-  }
-
-  Widget _topicRow(String number, Topic topic) {
-    return PListRow(
-      title: topic.title,
-      meta: topic.tag,
-      prefix: Text(number, style: PType.meta.copyWith(color: PColors.bone45)),
-      trailing: Text(
-        topic.tag,
-        style: PType.meta.copyWith(color: PColors.bone55),
-      ),
-      showChevron: false,
-      onTap: () => onTopicTap(topic),
     );
   }
 }

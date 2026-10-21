@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/state/async_state.dart';
 import '../../../../core/theme/tokens.dart';
@@ -12,8 +13,10 @@ import '../../../topics/presentation/screens/topic_detail_screen.dart';
 import '../../../topics/presentation/screens/topics_screen.dart';
 import '../../../devotionals/presentation/providers/devotionals_provider.dart';
 import '../../../bible/presentation/screens/bible_screen.dart';
+import '../../../bible/presentation/widgets/share_verse_sheet.dart';
 import '../../domain/models/daily_verse.dart';
 import '../providers/home_provider.dart';
+import '../../../declarations/presentation/providers/declaration_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<HomeProvider>().loadHomeData();
       context.read<TopicsProvider>().loadTopics();
+      context.read<DeclarationProvider>().loadTodayDeclaration();
     });
   }
 
@@ -184,6 +188,7 @@ class _Greeting extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final streaks = context.watch<StreaksProvider>();
     final name = auth.isAuthenticated ? auth.currentSession?.user.name : null;
 
     final hour = DateTime.now().hour;
@@ -200,6 +205,11 @@ class _Greeting extends StatelessWidget {
         ? '$greetingPrefix,\n$name.'
         : '$greetingPrefix.';
 
+    final streak = streaks.streakCount;
+    final eveningSub = streak > 0
+        ? 'Today is complete. $streak ${streak == 1 ? "day" : "days"} now.'
+        : 'Today is complete.';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -210,8 +220,8 @@ class _Greeting extends StatelessWidget {
         if (isEvening) ...[
           const SizedBox(height: 10),
           Text(
-            'Today is complete. Keep growing.',
-            style: PType.body,
+            eveningSub,
+            style: PType.body.copyWith(color: PColors.bone70),
           ),
         ],
       ],
@@ -227,13 +237,36 @@ class _MainSections extends StatelessWidget {
   final bool isEvening;
   final HomeData? homeData;
 
-  /// Parse a reference like "Deuteronomy 20:4" or "Psalm 139:13-14" into
-  /// a (bookName, chapter) pair for navigating BibleReaderScreen.
-  (String bookId, String bookName, int chapter) _parseVerseRef(String ref) {
+  /// Parse a reference like "Proverbs 11:25", "Psalm 139:13-14", or "1 Corinthians 13:4-8"
+  /// into (bookId, bookName, chapter, verseNumber) for navigating BibleReaderScreen.
+  (String bookId, String bookName, int chapter, int? verse) _parseVerseRef(
+    String ref, {
+    String? fallbackBookId,
+    String? fallbackBookName,
+    int? fallbackChapter,
+    int? fallbackVerse,
+  }) {
+    if (fallbackBookId != null && fallbackChapter != null) {
+      return (
+        fallbackBookId,
+        fallbackBookName ?? fallbackBookId,
+        fallbackChapter,
+        fallbackVerse,
+      );
+    }
+
     final clean = ref.split('·').first.trim();
     final lastColon = clean.lastIndexOf(':');
-    if (lastColon == -1) return (clean.toLowerCase().replaceAll(' ', '-'), clean, 1);
+    if (lastColon == -1) {
+      final bId = clean.toLowerCase().replaceAll(' ', '').replaceAll('-', '');
+      return (bId == 'psalm' ? 'psalms' : bId, clean, 1, null);
+    }
+
     final bookAndChapter = clean.substring(0, lastColon).trim();
+    final afterColon = clean.substring(lastColon + 1).trim();
+    final versePart = afterColon.split('-').first.split(',').first.trim();
+    final parsedVerse = int.tryParse(versePart);
+
     final parts = bookAndChapter.split(' ');
     int chapter = 1;
     String bookName = bookAndChapter;
@@ -246,29 +279,34 @@ class _MainSections extends StatelessWidget {
     }
     var bookId = bookName.toLowerCase().replaceAll(' ', '').replaceAll('-', '');
     if (bookId == 'psalm') bookId = 'psalms';
-    return (bookId, bookName, chapter);
+    return (bookId, bookName, chapter, parsedVerse);
   }
 
   @override
   Widget build(BuildContext context) {
-    final verseText = homeData?.dailyVerse.text ?? '';
-    final verseRef = homeData != null
-        ? '${homeData!.dailyVerse.reference} · ${homeData!.dailyVerse.version}'
-        : '';
-    final rawRef = homeData?.dailyVerse.reference ?? '';
-    final (bookId, bookName, chapter) = _parseVerseRef(rawRef);
-    final devotionalDay = homeData?.dailyVerse.devotionalDay;
+    final daily = homeData?.dailyVerse;
+    final verseText = daily?.text ?? '';
+    final rawRef = daily?.reference ?? '';
+    final (bookId, bookName, chapter, verseNumber) = _parseVerseRef(
+      rawRef,
+      fallbackBookId: daily?.bookId,
+      fallbackBookName: daily?.bookName,
+      fallbackChapter: daily?.chapter,
+      fallbackVerse: daily?.verseNumber,
+    );
+    final devotionalDay = daily?.devotionalDay;
+    final devotionalTitle = daily?.devotionalTitle;
+    const versionLabel = 'KJV';
+    final displayRef = rawRef.isNotEmpty ? '$rawRef · $versionLabel' : '';
 
     /// Opens today's devotional. Loads from DevotionalsProvider by day number.
     Future<void> openTodaysDevotional() async {
       final devProvider = context.read<DevotionalsProvider>();
-      // Ensure list is loaded
       if (devProvider.currentDevotionals.isEmpty) {
         await devProvider.loadDevotionals();
       }
       if (!context.mounted) return;
       final list = devProvider.currentDevotionals;
-      // Find by day number, fallback to first
       final todayDev = list.firstWhere(
         (d) => d.day == devotionalDay,
         orElse: () => list.isNotEmpty ? list.first : throw Exception('empty'),
@@ -278,6 +316,47 @@ class _MainSections extends StatelessWidget {
       );
     }
 
+    void openBibleReader() {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BibleReaderScreen(
+            bookId: bookId,
+            bookName: bookName,
+            initialChapter: chapter,
+            initialVerse: verseNumber,
+            targetVersion: 'KJV',
+            devotionalTitle: devotionalTitle,
+            devotionalDay: devotionalDay,
+            isFromDevotional: true,
+          ),
+        ),
+      );
+    }
+
+    void openEveningPsalm() {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const BibleReaderScreen(
+            bookId: 'psalms',
+            bookName: 'Psalms',
+            initialChapter: 4,
+            targetVersion: 'KJV',
+          ),
+        ),
+      );
+    }
+
+    final streaks = context.watch<StreaksProvider>();
+    final declProvider = context.watch<DeclarationProvider>();
+    final todayDecl = declProvider.todayDeclaration;
+    final isDeclarationsComplete = (todayDecl != null &&
+        (streaks.proclaimedDeclarationIds.contains(todayDecl.id.toString()) ||
+            (todayDecl.dayNumber != null &&
+                (streaks.proclaimedDeclarationIds.contains(
+                        '${todayDecl.gender}_${todayDecl.dayNumber}') ||
+                    streaks.proclaimedDeclarationIds.contains(
+                        '${todayDecl.gender}_day_${todayDecl.dayNumber}')))));
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -285,84 +364,376 @@ class _MainSections extends StatelessWidget {
         const PEyebrow("Today's Topic"),
         const SizedBox(height: 14),
         _TopicsHeroCard(),
-        const SizedBox(height: 36),
+        const SizedBox(height: 32),
 
-        // ── TODAY'S SCRIPTURE ─────────────────────────────────────────
-        const PEyebrow("Today's Scripture"),
-        const SizedBox(height: 14),
-
-        // ── Tappable verse → opens today's Devotional ─────────────────
-        if (verseText.isNotEmpty && devotionalDay != null)
-          PInteractive(
-            onTap: openTodaysDevotional,
-            tooltip: "Leer devocional de hoy",
-            pressedScale: 0.99,
-            pressedOpacity: 0.85,
-            builder: (context, isHovered, isPressed) => AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 140),
-              style: PType.scripture.copyWith(
-                color: isHovered ? PColors.bone : PColors.bone.withValues(alpha: 0.95),
-              ),
-              child: Text('"$verseText"'),
-            ),
-          )
-        else if (verseText.isNotEmpty)
-          Text('"$verseText"', style: PType.scripture)
-        else
+        // ── TODAY'S SCRIPTURE ── ILLUMINATED LUXURY EDITORIAL CARD ─────
+        if (verseText.isNotEmpty)
           Container(
-            height: 80,
             decoration: BoxDecoration(
-              color: PColors.glassFill,
-              borderRadius: BorderRadius.circular(PRadius.chip),
+              color: const Color(0xFF1B1915),
+              borderRadius: BorderRadius.circular(PRadius.panel),
+              border: Border.all(color: const Color(0x40C5A059), width: 1.2),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF28231C),
+                  Color(0xFF171512),
+                  Color(0xFF12110F),
+                ],
+                stops: [0.0, 0.55, 1.0],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  blurRadius: 30,
+                  offset: const Offset(0, 12),
+                ),
+                BoxShadow(
+                  color: const Color(0xFFC5A059).withValues(alpha: 0.12),
+                  blurRadius: 24,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ),
-        const SizedBox(height: 12),
-
-        // ── Bible reference & Devotional links ────────────────────────
-        Wrap(
-          spacing: 16,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (verseRef.isNotEmpty)
-              PLink(
-                text: verseRef,
-                textStyle: PType.meta.copyWith(color: PColors.bone62),
-                trailingIcon: Icons.arrow_outward_rounded,
-                iconSize: 12,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => BibleReaderScreen(
-                      bookId: bookId,
-                      bookName: bookName,
-                      initialChapter: chapter,
+            child: Stack(
+              children: [
+                // Top-right subtle sacred glow aura
+                Positioned(
+                  top: -20,
+                  right: -20,
+                  child: Container(
+                    width: 140,
+                    height: 140,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          const Color(0xFFC5A059).withValues(alpha: 0.16),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
                   ),
                 ),
+
+                // Card Content
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header Row: Eyebrow badge + KJV Pill + Share action
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0x28C5A059),
+                              borderRadius: BorderRadius.circular(PRadius.pill),
+                              border: Border.all(color: const Color(0x55C5A059)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.auto_awesome_rounded,
+                                  size: 11,
+                                  color: Color(0xFFE5C583),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  "TODAY'S SCRIPTURE",
+                                  style: GoogleFonts.hankenGrotesk(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.4,
+                                    color: const Color(0xFFE5C583),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0x1FFFFFFF),
+                              borderRadius: BorderRadius.circular(PRadius.pill),
+                              border: Border.all(color: const Color(0x33FFFFFF)),
+                            ),
+                            child: Text(
+                              'KJV',
+                              style: GoogleFonts.hankenGrotesk(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.8,
+                                color: PColors.bone,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              onTap: () {
+                                ShareVerseSheet.show(
+                                  context,
+                                  bookName: bookName,
+                                  chapter: chapter,
+                                  verseNumber: verseNumber ?? 1,
+                                  verseText: verseText,
+                                  version: 'KJV',
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0x14FFFFFF),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: const Color(0x24FFFFFF)),
+                                ),
+                                child: const Icon(
+                                  Icons.share_rounded,
+                                  size: 14,
+                                  color: PColors.bone70,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Verse Text with sacred Newsreader serif styling
+                      PInteractive(
+                        onTap: devotionalDay != null ? openTodaysDevotional : openBibleReader,
+                        tooltip: devotionalDay != null ? "Leer devocional de hoy" : "Leer en la Biblia",
+                        pressedScale: 0.99,
+                        pressedOpacity: 0.90,
+                        builder: (context, isHovered, isPressed) => AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 140),
+                          style: GoogleFonts.newsreader(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w300,
+                            fontStyle: FontStyle.italic,
+                            height: 1.42,
+                            color: isHovered ? Colors.white : PColors.bone,
+                          ),
+                          child: Text('“$verseText”'),
+                        ),
+                      ),
+
+                      // Devotional Context Chip (shows that this verse is part of today's devotional)
+                      if (devotionalDay != null) ...[
+                        const SizedBox(height: 14),
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: openTodaysDevotional,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0x1CC5A059),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0x38C5A059)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.bookmark_rounded,
+                                    size: 13,
+                                    color: Color(0xFFE2C285),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Expanded(
+                                    child: Text(
+                                      devotionalTitle != null && devotionalTitle.isNotEmpty
+                                          ? 'Versículo del devocional: $devotionalTitle'
+                                          : 'Versículo conectado con el devocional de hoy',
+                                      style: GoogleFonts.hankenGrotesk(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFFE2C285),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 14,
+                                    color: Color(0xFFE2C285),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      // Hairline separator
+                      Container(
+                        height: 1,
+                        color: const Color(0x24FFFFFF),
+                        margin: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+
+                      // Footer Actions: Bible reader reference button & Devotional link
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (displayRef.isNotEmpty)
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: openBibleReader,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x26C5A059),
+                                    borderRadius: BorderRadius.circular(PRadius.chip),
+                                    border: Border.all(color: const Color(0x55C5A059)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.menu_book_rounded,
+                                        size: 13,
+                                        color: Color(0xFFE5C583),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        displayRef,
+                                        style: GoogleFonts.hankenGrotesk(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: PColors.bone,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 5),
+                                      const Icon(
+                                        Icons.arrow_outward_rounded,
+                                        size: 11,
+                                        color: Color(0xFFE5C583),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (devotionalDay != null)
+                            PLink(
+                              text: "Today's Devotional",
+                              textStyle: PType.meta.copyWith(
+                                color: const Color(0xFFE5C583),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              trailingIcon: Icons.arrow_forward_rounded,
+                              iconSize: 11,
+                              onTap: openTodaysDevotional,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            height: 90,
+            decoration: BoxDecoration(
+              color: PColors.glassFill,
+              borderRadius: BorderRadius.circular(PRadius.panel),
+            ),
+          ),
+        const SizedBox(height: 32),
+
+        // ── FAITH DECLARATIONS HERO BONE CARD (Flow 02 Spec) ───────────
+        PBoneCard(
+          onTap: () => MainShell.setTab(context, 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'FAITH DECLARATIONS',
+                    style: PType.eyebrow
+                        .copyWith(color: PColors.clay, fontSize: 10),
+                  ),
+                  Text(
+                    isDeclarationsComplete ? '04 / 04' : '00 / 04',
+                    style: PType.counter,
+                  ),
+                ],
               ),
-            if (devotionalDay != null)
-              PLink(
-                text: "Today's Devotional",
-                textStyle: PType.meta.copyWith(color: PColors.clay),
-                trailingIcon: Icons.arrow_forward_rounded,
-                iconSize: 11,
-                onTap: openTodaysDevotional,
+              const SizedBox(height: 14),
+              Text(
+                isDeclarationsComplete
+                    ? (todayDecl.text.isNotEmpty
+                        ? '“${todayDecl.text}”'
+                        : 'Today’s four declarations spoken.')
+                    : 'Four declarations,\nprepared for you',
+                style: PType.cardTitle.copyWith(
+                  fontSize: 22,
+                  height: 1.25,
+                  color: PColors.ink,
+                ),
+                maxLines: isDeclarationsComplete ? 3 : 2,
+                overflow: TextOverflow.ellipsis,
               ),
-          ],
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    isDeclarationsComplete
+                        ? 'Read them again'
+                        : 'Take four quiet minutes',
+                    style: PType.meta
+                        .copyWith(color: PColors.ink40, fontSize: 12),
+                  ),
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: const BoxDecoration(
+                      color: PColors.ink,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: PColors.bone,
+                      size: 18,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 36),
+        const SizedBox(height: 28),
 
         // ── Action rows ───────────────────────────────────────────────
         PListRow(
-          title: 'Faith Declarations',
-          meta: 'Speak over your day · 4 declarations',
-          onTap: () => MainShell.setTab(context, 2),
+          title: "Today's Devotional",
+          meta: devotionalTitle != null && devotionalTitle.isNotEmpty
+              ? '$devotionalTitle · 2 min'
+              : 'Daily reflection and prayer',
+          onTap: openTodaysDevotional,
         ),
         PListRow(
-          title: 'Read the Bible',
-          meta: 'Open Bible library',
+          title: isEvening ? 'Evening Psalm' : 'Continue reading',
+          meta: isEvening ? 'Psalm 4 · 1 min' : 'Open Bible library',
           showTopBorder: false,
-          onTap: () => MainShell.setTab(context, 1),
+          onTap: isEvening
+              ? openEveningPsalm
+              : () => MainShell.setTab(context, 1),
         ),
       ],
     );

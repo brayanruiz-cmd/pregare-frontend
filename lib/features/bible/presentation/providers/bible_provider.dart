@@ -4,6 +4,7 @@ import '../../domain/models/bible_highlight.dart';
 import '../../domain/models/bible_version.dart';
 import '../../domain/models/book.dart';
 import '../../domain/models/chapter.dart';
+import '../../domain/models/verse_collection.dart';
 import '../../domain/ports/bible_repository.dart';
 import '../../application/usecases/get_versions_use_case.dart';
 import '../../application/usecases/get_books_use_case.dart';
@@ -97,7 +98,105 @@ class BibleProvider extends ChangeNotifier {
     _highlights = [];
     _highlightedVerses.clear();
     _highlightsMap.clear();
+    _collections = [];
     notifyListeners();
+  }
+
+  // ── Verse Collections ──────────────────────────────────────────────────
+  List<VerseCollection> _collections = [];
+  List<VerseCollection> get collections => _collections;
+
+  bool _isLoadingCollections = false;
+  bool get isLoadingCollections => _isLoadingCollections;
+
+  Future<void> loadCollections() async {
+    _isLoadingCollections = true;
+    notifyListeners();
+    try {
+      final res = await _repository.getCollections();
+      _collections = res;
+    } catch (_) {}
+    _isLoadingCollections = false;
+    notifyListeners();
+  }
+
+  Future<VerseCollection?> createCollection(String title, {String? colorHex, String? description}) async {
+    try {
+      final newCol = await _repository.createCollection(
+        title,
+        colorHex: colorHex,
+        description: description,
+      );
+      _collections.insert(0, newCol);
+      notifyListeners();
+      return newCol;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> deleteCollection(String id) async {
+    try {
+      final success = await _repository.deleteCollection(id);
+      if (success) {
+        _collections.removeWhere((c) => c.id == id);
+        notifyListeners();
+      }
+      return success;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<List<String>> getVerseCollectionIds(String bookId, int chapter, int verseNumber) async {
+    try {
+      return await _repository.getVerseCollectionIds(
+        bookId: bookId,
+        chapter: chapter,
+        verseNumber: verseNumber,
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<bool> toggleVerseInCollection(
+    String collectionId, {
+    required String bookId,
+    String? bookName,
+    required int chapter,
+    required int verseNumber,
+    required String verseText,
+    String? colorHex,
+    String? version,
+  }) async {
+    try {
+      final inCollection = await _repository.toggleVerseInCollection(
+        collectionId: collectionId,
+        bookId: bookId,
+        bookName: bookName,
+        chapter: chapter,
+        verseNumber: verseNumber,
+        verseText: verseText,
+        colorHex: colorHex,
+        version: version,
+      );
+      // Reload collections in background to update counts and previews
+      final updated = await _repository.getCollections();
+      _collections = updated;
+      notifyListeners();
+      return inCollection;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<VerseCollection?> getCollectionDetails(String id) async {
+    try {
+      return await _repository.getCollectionDetails(id);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<bool> setVerseHighlight(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/state/async_state.dart';
 import '../../../../core/theme/tokens.dart';
@@ -14,6 +15,9 @@ import '../../domain/models/highlight_color_option.dart';
 import '../widgets/highlight_color_picker_sheet.dart';
 import '../providers/bible_provider.dart';
 import '../../../../core/ui/molecules/reading_scroll_capsule.dart';
+import 'collections_library_screen.dart';
+import '../../../devotionals/presentation/providers/devotionals_provider.dart';
+import '../../../topics/presentation/screens/topics_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen 10 — Bible library (Background: INK · With floating nav)
@@ -126,35 +130,70 @@ class _BibleScreenState extends State<BibleScreen> {
             children: [
               const SizedBox(height: 16),
 
-              // ── Header: Title "Bible" + Translation selector ──────────────────
+              // ── Header: Title "Bible" + Translation selector & Collections ────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text('Bible', style: PType.display),
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: () => _showVersionPicker(provider),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: PColors.glassFill,
-                          borderRadius: BorderRadius.circular(PRadius.chip),
-                          border: Border.all(color: PColors.hairline, width: 1.0),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(
-                              provider.selectedVersion,
-                              style: PType.meta.copyWith(color: PColors.bone, fontWeight: FontWeight.w600),
+                  Row(
+                    children: [
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const CollectionsLibraryScreen(),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: PColors.glassFill,
+                              borderRadius: BorderRadius.circular(PRadius.chip),
+                              border: Border.all(color: PColors.hairline, width: 1.0),
                             ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.keyboard_arrow_down_rounded, color: PColors.bone62, size: 16),
-                          ],
+                            child: Row(
+                              children: [
+                                const Icon(Icons.bookmark_border_rounded, color: PColors.bone, size: 16),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Librería',
+                                  style: PType.meta.copyWith(color: PColors.bone, fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => _showVersionPicker(provider),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: PColors.glassFill,
+                              borderRadius: BorderRadius.circular(PRadius.chip),
+                              border: Border.all(color: PColors.hairline, width: 1.0),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  provider.selectedVersion,
+                                  style: PType.meta.copyWith(color: PColors.bone, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.keyboard_arrow_down_rounded, color: PColors.bone62, size: 16),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -645,6 +684,9 @@ class BibleReaderScreen extends StatefulWidget {
   final int? totalChapters;
   final int? initialVerse;
   final String? targetVersion;
+  final String? devotionalTitle;
+  final int? devotionalDay;
+  final bool isFromDevotional;
 
   const BibleReaderScreen({
     super.key,
@@ -654,6 +696,9 @@ class BibleReaderScreen extends StatefulWidget {
     this.totalChapters,
     this.initialVerse,
     this.targetVersion,
+    this.devotionalTitle,
+    this.devotionalDay,
+    this.isFromDevotional = false,
   });
 
   @override
@@ -665,6 +710,142 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
   late final ScrollController _scrollController;
   final Map<int, GlobalKey> _verseKeys = {};
   int? _activeTargetVerse;
+
+  Future<void> _openDevotionalFromReader() async {
+    if (widget.devotionalDay == null) return;
+    final devProvider = context.read<DevotionalsProvider>();
+    if (devProvider.currentDevotionals.isEmpty) {
+      await devProvider.loadDevotionals();
+    }
+    if (!mounted) return;
+    final list = devProvider.currentDevotionals;
+    try {
+      final targetDev = list.firstWhere(
+        (d) => d.day == widget.devotionalDay,
+        orElse: () => list.isNotEmpty ? list.first : throw Exception('empty'),
+      );
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TodayDevotionalDetailScreen(devotional: targetDev),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  Widget _buildDevotionalContextCard() {
+    final versionStr = widget.targetVersion ?? 'KJV';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F3EB),
+        borderRadius: BorderRadius.circular(PRadius.tile),
+        border: Border.all(color: const Color(0x66B58D3D), width: 1.2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0DB58D3D),
+            blurRadius: 16,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFB58D3D),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                  size: 13,
+                ),
+              ),
+              const SizedBox(width: 9),
+              Text(
+                'DEVOCIONAL DE HOY',
+                style: GoogleFonts.hankenGrotesk(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                  color: const Color(0xFF8A601E),
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0x20B58D3D),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  versionStr,
+                  style: GoogleFonts.hankenGrotesk(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF8A601E),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (widget.devotionalTitle != null && widget.devotionalTitle!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.devotionalTitle!,
+              style: GoogleFonts.newsreader(
+                fontSize: 17,
+                fontWeight: FontWeight.w500,
+                color: PColors.ink,
+              ),
+            ),
+          ],
+          const SizedBox(height: 5),
+          Text(
+            widget.initialVerse != null
+                ? 'El versículo ${widget.initialVerse} es el versículo central del devocional de hoy.'
+                : 'Esta lectura acompaña tu devocional de hoy.',
+            style: GoogleFonts.hankenGrotesk(
+              fontSize: 12.5,
+              color: PColors.ink40,
+            ),
+          ),
+          if (widget.devotionalDay != null) ...[
+            const SizedBox(height: 10),
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: _openDevotionalFromReader,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Abrir devocional de hoy',
+                      style: GoogleFonts.hankenGrotesk(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF8A601E),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 13,
+                      color: Color(0xFF8A601E),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   int _resolveTotalChapters(BibleProvider provider) {
     if (widget.totalChapters != null &&
@@ -800,6 +981,17 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
           children: [
             GestureDetector(
               onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const CollectionsLibraryScreen(),
+                  ),
+                );
+              },
+              child: const Icon(Icons.bookmark_border_rounded, color: PColors.ink40, size: 20),
+            ),
+            const SizedBox(width: 14),
+            GestureDetector(
+              onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Tap any verse to highlight or bookmark it.'),
@@ -890,7 +1082,12 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
                 '${widget.bookName}\nChapter $_currentChapter',
                 style: PType.display.copyWith(color: PColors.ink, fontSize: 32, height: 1.15),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+
+              if (widget.isFromDevotional && widget.devotionalDay != null) ...[
+                _buildDevotionalContextCard(),
+                const SizedBox(height: 24),
+              ],
 
               ...verses.map((v) => _buildVerse(provider, v)),
 
@@ -953,58 +1150,114 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
                 ? const EdgeInsets.symmetric(horizontal: 14, vertical: 12)
                 : const EdgeInsets.symmetric(vertical: 4),
             decoration: BoxDecoration(
-              color: isTarget
+              color: (isTarget && widget.isFromDevotional)
                   ? const Color(0x28B58D3D)
                   : (isHighlighted
                       ? colorOption.fill.withValues(alpha: 0.45)
-                      : Colors.transparent),
+                      : (isTarget ? const Color(0x18B58D3D) : Colors.transparent)),
               borderRadius: BorderRadius.circular(PRadius.tile),
-              border: isTarget
+              border: (isTarget && widget.isFromDevotional)
                   ? Border.all(color: const Color(0xFFB58D3D), width: 1.8)
                   : (isHighlighted
                       ? Border(left: BorderSide(color: colorOption.accent, width: 3.5))
-                      : null),
+                      : (isTarget ? Border.all(color: const Color(0x60B58D3D), width: 1.2) : null)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (isTarget) ...[
+                if (isTarget && widget.isFromDevotional) ...[
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                         decoration: BoxDecoration(
                           color: const Color(0xFFB58D3D),
                           borderRadius: BorderRadius.circular(4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFB58D3D).withValues(alpha: 0.25),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                        child: const Text(
-                          'VERSÍCULO DEL DEVOCIONAL',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 10),
+                            SizedBox(width: 4),
+                            Text(
+                              'VERSÍCULO DEL DEVOCIONAL',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Versión KJV',
+                        'Versión ${widget.targetVersion ?? 'KJV'}',
                         style: PType.meta.copyWith(
-                          color: const Color(0xFFB58D3D),
+                          color: const Color(0xFF8A601E),
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+                      const Spacer(),
+                      if (widget.devotionalDay != null)
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: _openDevotionalFromReader,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Ver devocional',
+                                  style: PType.meta.copyWith(
+                                    color: const Color(0xFF8A601E),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                const Icon(
+                                  Icons.arrow_forward_rounded,
+                                  size: 11,
+                                  color: Color(0xFF8A601E),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  if (widget.devotionalTitle != null && widget.devotionalTitle!.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      '“${widget.devotionalTitle}”',
+                      style: GoogleFonts.newsreader(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                        color: const Color(0xFF5A4318),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
                 ],
                 _buildVerseSpan(
                   '${v.number}',
                   v.text,
                   isHighlighted: isHighlighted || isTarget,
-                  accentColor: isTarget ? const Color(0xFFB58D3D) : (isHighlighted ? colorOption.accent : null),
+                  accentColor: (isTarget && widget.isFromDevotional)
+                      ? const Color(0xFFB58D3D)
+                      : (isHighlighted ? colorOption.accent : null),
                 ),
               ],
             ),

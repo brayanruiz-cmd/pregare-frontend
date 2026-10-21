@@ -6,6 +6,8 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/highlight_color_option.dart';
 import '../../domain/models/chapter.dart';
 import '../providers/bible_provider.dart';
+import 'save_to_collection_sheet.dart';
+import 'share_verse_sheet.dart';
 
 /// Bottom modal sheet / dialog to choose a highlight color for a Bible verse.
 class HighlightColorPickerSheet extends StatelessWidget {
@@ -115,6 +117,21 @@ class HighlightColorPickerSheet extends StatelessWidget {
                   ),
                 ),
                 IconButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    ShareVerseSheet.show(
+                      context,
+                      bookName: bookName,
+                      chapter: chapter,
+                      verseNumber: verse.number,
+                      verseText: verse.text,
+                    );
+                  },
+                  icon: const Icon(Icons.ios_share_rounded, color: PColors.ink, size: 20),
+                  splashRadius: 20,
+                  tooltip: 'Compartir versículo',
+                ),
+                IconButton(
                   onPressed: () => Navigator.of(context).pop(),
                   icon: const Icon(Icons.close_rounded, color: PColors.ink40, size: 20),
                   splashRadius: 20,
@@ -202,18 +219,14 @@ class HighlightColorPickerSheet extends StatelessWidget {
                             verseText: verse.text,
                           );
 
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  isNowHighlighted
-                                      ? '$bookName $chapter:${verse.number} highlighted in ${opt.name}'
-                                      : '$bookName $chapter:${verse.number} highlight removed',
-                                ),
-                                duration: const Duration(seconds: 2),
-                                behavior: SnackBarBehavior.floating,
-                              ),
+                          if (context.mounted && isNowHighlighted) {
+                            SaveToCollectionSheet.show(
+                              context,
+                              bookId: bookId,
+                              bookName: bookName,
+                              chapter: chapter,
+                              verse: verse,
+                              colorHex: opt.hex,
                             );
                           }
                         },
@@ -232,18 +245,25 @@ class HighlightColorPickerSheet extends StatelessWidget {
                     );
 
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            isNowHighlighted
-                                ? '$bookName $chapter:${verse.number} highlighted in ${opt.name}'
-                                : '$bookName $chapter:${verse.number} highlight removed',
+                      if (isNowHighlighted) {
+                        SaveToCollectionSheet.show(
+                          context,
+                          bookId: bookId,
+                          bookName: bookName,
+                          chapter: chapter,
+                          verse: verse,
+                          colorHex: opt.hex,
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('$bookName $chapter:${verse.number} highlight removed'),
+                            duration: const Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
                           ),
-                          duration: const Duration(seconds: 2),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
+                        );
+                      }
                     }
                   },
                   child: Column(
@@ -296,6 +316,47 @@ class HighlightColorPickerSheet extends StatelessWidget {
                 );
               }).toList(),
             ),
+
+            if (isHighlighted) ...[
+              const SizedBox(height: 18),
+              GestureDetector(
+                onTap: () {
+                  Navigator.of(context).pop();
+                  SaveToCollectionSheet.show(
+                    context,
+                    bookId: bookId,
+                    bookName: bookName,
+                    chapter: chapter,
+                    verse: verse,
+                    colorHex: currentColorHex,
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: PColors.ink06,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: PColors.ink14),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.bookmark_add_rounded, size: 18, color: PColors.ink),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Guardar en colecciones',
+                        style: PType.meta.copyWith(
+                          color: PColors.ink,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

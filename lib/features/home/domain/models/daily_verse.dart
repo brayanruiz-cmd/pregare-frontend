@@ -3,6 +3,10 @@ class DailyVerse {
     required this.text,
     required this.reference,
     required this.version,
+    this.bookId,
+    this.bookName,
+    this.chapter,
+    this.verseNumber,
     this.devotionalId,
     this.devotionalDay,
     this.devotionalTitle,
@@ -11,6 +15,10 @@ class DailyVerse {
   final String text;
   final String reference;
   final String version;
+  final String? bookId;
+  final String? bookName;
+  final int? chapter;
+  final int? verseNumber;
   /// UUID of today's devotional in the DB
   final String? devotionalId;
   /// Day number of today's devotional (1–365)
@@ -21,7 +29,11 @@ class DailyVerse {
     return DailyVerse(
       text: json['text'] as String,
       reference: json['reference'] as String,
-      version: json['version'] as String? ?? 'NIV',
+      version: json['version'] as String? ?? 'KJV',
+      bookId: json['bookId'] as String?,
+      bookName: json['bookName'] as String?,
+      chapter: json['chapter'] as int?,
+      verseNumber: json['verseNumber'] as int?,
       devotionalId: json['devotionalId'] as String?,
       devotionalDay: json['devotionalDay'] as int?,
       devotionalTitle: json['devotionalTitle'] as String?,

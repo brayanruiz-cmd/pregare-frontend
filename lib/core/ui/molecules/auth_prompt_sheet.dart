@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../features/onboarding/presentation/providers/onboarding_provider.dart';
 import '../../../features/streaks/presentation/providers/streaks_provider.dart';
 import '../../../features/bible/presentation/providers/bible_provider.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/app_typography.dart';
+import '../../theme/tokens.dart';
 import '../../state/async_state.dart';
+import '../primitives/p_interactive.dart';
 
 class AuthPromptSheet extends StatefulWidget {
   final bool isLoginOnly;
@@ -62,6 +63,7 @@ class _AuthPromptSheetState extends State<AuthPromptSheet> {
   }
 
   Future<void> _submit() async {
+    HapticFeedback.lightImpact();
     final auth = context.read<AuthProvider>();
     final onboarding = context.read<OnboardingProvider>();
 
@@ -99,6 +101,7 @@ class _AuthPromptSheetState extends State<AuthPromptSheet> {
     if (!mounted) return;
 
     if (auth.isAuthenticated) {
+      HapticFeedback.mediumImpact();
       if (context.mounted) {
         context.read<StreaksProvider>().loadStreak();
         context.read<StreaksProvider>().loadBadges();
@@ -109,7 +112,7 @@ class _AuthPromptSheetState extends State<AuthPromptSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_isLogin ? 'Welcome back!' : 'Account created successfully!'),
-          backgroundColor: AppColors.surfaceElevated,
+          backgroundColor: PColors.ink,
         ),
       );
     } else if (auth.error != null) {
@@ -128,9 +131,10 @@ class _AuthPromptSheetState extends State<AuthPromptSheet> {
       ),
       child: Container(
         padding: const EdgeInsets.fromLTRB(28, 16, 28, 36),
-        decoration: const BoxDecoration(
-          color: Color(0xFF16141A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        decoration: BoxDecoration(
+          color: PColors.ink,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(color: PColors.hairline, width: 0.8),
         ),
         child: SafeArea(
           child: Column(
@@ -143,7 +147,7 @@ class _AuthPromptSheetState extends State<AuthPromptSheet> {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceElevated,
+                    color: PColors.bone.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -155,45 +159,60 @@ class _AuthPromptSheetState extends State<AuthPromptSheet> {
                 children: [
                   Text(
                     _isLogin ? 'Sign In' : 'Save Your Journey',
-                    style: AppTypography.displaySerif.copyWith(fontSize: 24),
+                    style: PType.cardTitle.copyWith(
+                      color: PColors.bone,
+                      fontSize: 24,
+                    ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, color: AppColors.textTertiary),
-                    onPressed: () => Navigator.of(context).pop(),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                  PInteractive(
+                    onTap: () => Navigator.of(context).pop(),
+                    tooltip: 'Close',
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: const BoxDecoration(
+                        color: PColors.glassFill,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: PColors.bone70,
+                        size: 18,
+                      ),
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
               Text(
                 _isLogin
-                    ? 'Sign in to sync your declarations and readings.'
+                    ? 'Sign in to sync your declarations, devotionals and streaks.'
                     : 'Create an account to backup your declarations, devotionals, and streaks across all your devices.',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
+                style: PType.body.copyWith(
+                  color: PColors.bone70,
+                  fontSize: 13,
                   height: 1.45,
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 22),
 
               if (_localError != null) ...[
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: AppColors.error.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                    color: const Color(0x33B00020),
+                    borderRadius: BorderRadius.circular(PRadius.chip),
+                    border: Border.all(color: const Color(0x66B00020)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.info_outline_rounded, color: AppColors.error, size: 18),
+                      const Icon(Icons.info_outline_rounded, color: Color(0xFFFF8A80), size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _localError!,
-                          style: AppTypography.caption.copyWith(color: AppColors.error),
+                          style: PType.meta.copyWith(color: const Color(0xFFFF8A80)),
                         ),
                       ),
                     ],
@@ -233,50 +252,57 @@ class _AuthPromptSheetState extends State<AuthPromptSheet> {
               const SizedBox(height: 24),
 
               // Submit Button
-              ElevatedButton(
-                onPressed: isLoading ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.boneCard,
-                  foregroundColor: AppColors.boneInk,
-                  minimumSize: const Size(double.infinity, 52),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
+              PInteractive(
+                onTap: isLoading ? null : _submit,
+                pressedScale: 0.985,
+                child: Container(
+                  width: double.infinity,
+                  height: 52,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: PColors.bone,
+                    borderRadius: BorderRadius.circular(PRadius.pill),
+                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: PColors.ink,
+                          ),
+                        )
+                      : Text(
+                          _isLogin ? 'Sign In' : 'Create Account & Sync',
+                          style: PType.uiStrong.copyWith(
+                            color: PColors.ink,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
-                child: isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.boneInk,
-                        ),
-                      )
-                    : Text(
-                        _isLogin ? 'Sign In' : 'Create Account & Sync',
-                        style: AppTypography.button.copyWith(
-                          color: AppColors.boneInk,
-                          fontSize: 14,
-                        ),
-                      ),
               ),
               const SizedBox(height: 16),
 
               // Toggle between Login & Register
               Center(
-                child: TextButton(
-                  onPressed: () {
+                child: PInteractive(
+                  onTap: () {
                     setState(() {
                       _isLogin = !_isLogin;
                       _localError = null;
                     });
                   },
-                  child: Text(
-                    _isLogin
-                        ? "Don't have an account? Sign up"
-                        : 'Already have an account? Sign in',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.accent,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12.5,
+                  child: Padding(
+                    padding: const EdgeInsets.all(6.0),
+                    child: Text(
+                      _isLogin
+                          ? "Don't have an account? Sign up"
+                          : 'Already have an account? Sign in',
+                      style: PType.uiStrong.copyWith(
+                        color: PColors.bone70,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),
@@ -297,28 +323,29 @@ class _AuthPromptSheetState extends State<AuthPromptSheet> {
     TextInputType keyboardType = TextInputType.text,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.surfaceBorder),
+        color: PColors.glassFill,
+        borderRadius: BorderRadius.circular(PRadius.chip),
+        border: Border.all(color: PColors.hairline),
       ),
       child: TextField(
         controller: controller,
         obscureText: obscureText,
         keyboardType: keyboardType,
-        style: AppTypography.body.copyWith(color: AppColors.textPrimary),
+        style: PType.body.copyWith(color: PColors.bone),
+        cursorColor: PColors.bone,
         decoration: InputDecoration(
-          icon: Icon(icon, color: AppColors.textTertiary, size: 20),
+          icon: Icon(icon, color: PColors.bone45, size: 20),
           labelText: label,
-          labelStyle: AppTypography.caption.copyWith(color: AppColors.textTertiary),
+          labelStyle: PType.meta.copyWith(color: PColors.bone45),
           hintText: hint,
-          hintStyle: AppTypography.bodySmall.copyWith(color: AppColors.textMuted),
+          hintStyle: PType.body.copyWith(color: PColors.bone45, fontSize: 13),
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
           filled: false,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
         ),
       ),
     );

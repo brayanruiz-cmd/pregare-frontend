@@ -50,7 +50,7 @@ class DeclarationsApiAdapter implements DeclarationsRepository {
     if (gender != null) queryParams['gender'] = gender;
     if (day != null) queryParams['day'] = day.toString();
 
-    const cacheKey = 'declarations_today';
+    final cacheKey = 'declarations_today_${gender ?? "all"}_${day ?? "current"}';
 
     try {
       final data = await httpClient.get(

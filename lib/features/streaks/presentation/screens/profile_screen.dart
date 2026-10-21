@@ -13,6 +13,7 @@ import '../../domain/models/streak_activity.dart';
 import '../../domain/models/user_badge_model.dart';
 import '../providers/streaks_provider.dart';
 import '../../../admin/presentation/screens/admin_dashboard_screen.dart';
+import '../../../bible/presentation/screens/collections_library_screen.dart';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,6 +155,13 @@ class ProfileScreen extends StatelessWidget {
               isAuthenticated ? '${streak?.highlightsCount ?? 0}' : '0',
               style: PType.meta.copyWith(color: PColors.bone55),
             ),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const CollectionsLibraryScreen(),
+                ),
+              );
+            },
           ),
           PListRow(
             title: 'Completed devotionals',

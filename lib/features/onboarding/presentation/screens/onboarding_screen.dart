@@ -1,11 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_typography.dart';
+import '../../../../core/theme/tokens.dart';
 import '../../../../core/ui/molecules/auth_prompt_sheet.dart';
 import '../../../../core/ui/organisms/main_shell.dart';
+import '../../../../core/ui/primitives/primitives.dart';
 import '../../../topics/presentation/providers/topics_provider.dart';
 import '../providers/onboarding_provider.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Flujo 01 — Onboarding (7 pantallas, sin nav)
+//
+// 01 Splash: FOTO photo-dusk-water | Wordmark 236px + tagline
+// 02 Welcome: FOTO photo-welcome | "Begin the day..." + Start + Log in
+// 03 Name: INK | "What's your name?" + hint + Next
+// 04 Content preference: INK | For women / For men con ✓ + Next
+// 05 Topics: INK | 12 chips + contador + Next
+// 06 Reminder: INK | Morning/Afternoon/Evening + selector horario (6:15 AM)
+// 07 Ready: FOTO photo-milestone | Resumen + Enter PREGARE
+// ─────────────────────────────────────────────────────────────────────────────
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -34,9 +47,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _goToPage(int page) {
+    HapticFeedback.lightImpact();
     _pageController.animateToPage(
       page,
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 380),
       curve: Curves.easeInOutCubic,
     );
   }
@@ -56,6 +70,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _finishOnboarding() async {
+    HapticFeedback.mediumImpact();
     final provider = context.read<OnboardingProvider>();
     await provider.completeOnboarding();
     if (!mounted) return;
@@ -71,7 +86,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: PColors.inkDeep,
       body: PageView(
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(),
@@ -89,42 +104,56 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Step Navigation Bar (Top Bar for steps 2 to 5) ────────────────────────
+  // ── Top Bar for questionnaire steps (Steps 2 to 5) ─────────────────────────
   Widget _buildTopNavBar({required int stepIndex, VoidCallback? onSkip}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left_rounded, size: 28, color: AppColors.textPrimary),
-            onPressed: _previousPage,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+          PInteractive(
+            onTap: _previousPage,
+            tooltip: 'Back',
+            builder: (context, isHovered, isPressed) => Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isHovered ? PColors.glassFill : Colors.transparent,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.chevron_left_rounded,
+                size: 26,
+                color: PColors.bone,
+              ),
+            ),
           ),
-          // Progress Dashes (4 dashes for the 4 questionnaire steps: Name, Gender, Topics, Reminder)
+          // 4 Progress dashes for the 4 questionnaire steps
           Row(
             children: List.generate(4, (index) {
               final isActive = index <= stepIndex;
               return Container(
-                width: 32,
+                width: 28,
                 height: 2.5,
-                margin: const EdgeInsets.symmetric(horizontal: 3),
+                margin: const EdgeInsets.symmetric(horizontal: 2.5),
                 decoration: BoxDecoration(
-                  color: isActive ? AppColors.boneCard : AppColors.surfaceElevated,
+                  color: isActive ? PColors.bone : PColors.bone.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               );
             }),
           ),
-          GestureDetector(
+          PInteractive(
             onTap: onSkip ?? _nextPage,
-            child: Text(
-              'Skip',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.textTertiary,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+            tooltip: 'Skip',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Text(
+                'Skip',
+                style: PType.uiStrong.copyWith(
+                  color: PColors.bone50,
+                  fontSize: 13,
+                ),
               ),
             ),
           ),
@@ -133,76 +162,203 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Step 01: Splash Screen ────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
+  // Screen 01 — Splash
+  // Fondo: FOTO photo-dusk-water + scrim
+  // Wordmark PNG a 236px + tagline
+  // ───────────────────────────────────────────────────────────────────────────
   Widget _buildStep01Splash() {
-    return GestureDetector(
-      onTap: _nextPage,
-      behavior: HitTestBehavior.opaque,
-      child: Stack(
+    return PScreen(
+      background: const PScreenBackground.photo(
+        'assets/photo-dusk-water.jpg',
+        scrim: PScrims.home,
+      ),
+      hasNav: false,
+      padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
+      body: GestureDetector(
+        onTap: _nextPage,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          children: [
+            const Spacer(flex: 3),
+            Center(
+              child: Image.asset(
+                'assets/wordmark-pregare.png',
+                width: 236,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => Text(
+                  'PREGARE',
+                  style: PType.wordmark.copyWith(fontSize: 32, letterSpacing: 4.0),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'A daily space for Scripture, declaration\nand reflection',
+              textAlign: TextAlign.center,
+              style: PType.body.copyWith(
+                color: PColors.bone70,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            const Spacer(flex: 3),
+            PInteractive(
+              onTap: _nextPage,
+              child: Text(
+                'Tap anywhere to begin',
+                style: PType.meta.copyWith(
+                  color: PColors.bone50,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Screen 02 — Welcome
+  // Fondo: FOTO photo-welcome + scrim
+  // "Welcome" / "Begin the day with something steady." / Start + Log in
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildStep02Welcome() {
+    return PScreen(
+      background: const PScreenBackground.photo(
+        'assets/photo-welcome.jpg',
+        scrim: PScrims.home,
+      ),
+      hasNav: false,
+      padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Twilight lake sunrise background
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color(0xFF0D1B2A),
-                    Color(0xFF1B2A38),
-                    Color(0xFF2C3E50),
-                    Color(0xFF8B5A2B),
-                    Color(0xFFE5A855),
-                    Color(0xFF0F141C),
-                  ],
-                  stops: [0.0, 0.45, 0.65, 0.78, 0.88, 1.0],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+          const Spacer(flex: 2),
+          const PEyebrow('WELCOME'),
+          const SizedBox(height: 14),
+          Text(
+            'Begin the day with\nsomething steady.',
+            style: PType.display.copyWith(
+              fontSize: 34,
+              color: PColors.bone,
+              height: 1.15,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Four faith declarations, a two-minute devotional, and the Bible — all in one quiet place.',
+            style: PType.body.copyWith(
+              color: PColors.bone70,
+              fontSize: 14,
+              height: 1.55,
+            ),
+          ),
+          const Spacer(flex: 3),
+          _PrimaryPillButton(
+            label: 'Start',
+            onTap: _nextPage,
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: PInteractive(
+              onTap: _openLogin,
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  'Log in',
+                  style: PType.uiStrong.copyWith(
+                    color: PColors.bone70,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ),
           ),
-          SafeArea(
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Screen 03 — Name
+  // Fondo: INK plana
+  // ‹ + Skip · "What's your name?" · input · hint · Next
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildStep03Name() {
+    final provider = context.watch<OnboardingProvider>();
+
+    return PScreen(
+      background: const PScreenBackground.ink(),
+      hasNav: false,
+      padding: EdgeInsets.zero,
+      body: Column(
+        children: [
+          _buildTopNavBar(stepIndex: 0),
+          Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Spacer(flex: 3),
-                  // Abstract PREGARE double arch symbol
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CustomPaint(
-                        size: const Size(36, 26),
-                        painter: _PregareSymbolPainter(),
-                      ),
-                      const SizedBox(width: 14),
-                      Text(
-                        'PREGARE',
-                        style: AppTypography.eyebrow.copyWith(
-                          fontSize: 22,
-                          letterSpacing: 4.0,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 28),
                   Text(
-                    'A daily space for Scripture, declaration\nand reflection',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: Colors.white.withValues(alpha: 0.8),
-                      fontSize: 13,
-                      height: 1.5,
+                    "What's your name?",
+                    style: PType.display.copyWith(fontSize: 30),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Your declarations are spoken to you by name.',
+                    style: PType.body.copyWith(
+                      color: PColors.bone70,
+                      fontSize: 14,
                     ),
                   ),
-                  const Spacer(flex: 3),
-                  Text(
-                    'Tap anywhere to begin',
-                    style: AppTypography.caption.copyWith(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 12,
+                  const SizedBox(height: 32),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: PColors.glassFill,
+                      borderRadius: BorderRadius.circular(PRadius.chip),
+                      border: Border.all(color: PColors.glassStroke),
+                    ),
+                    child: TextField(
+                      controller: _nameController,
+                      onChanged: (val) => provider.setName(val),
+                      style: PType.cardTitle.copyWith(
+                        fontSize: 20,
+                        color: PColors.bone,
+                      ),
+                      cursorColor: PColors.bone,
+                      decoration: InputDecoration(
+                        hintText: 'Your name',
+                        hintStyle: PType.cardTitle.copyWith(
+                          fontSize: 20,
+                          color: PColors.bone45,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  _PrimaryPillButton(
+                    label: 'Next',
+                    onTap: () {
+                      provider.setName(_nameController.text);
+                      _nextPage();
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  Center(
+                    child: Text(
+                      'You can change this later in your profile.',
+                      style: PType.meta.copyWith(color: PColors.bone50),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -215,214 +371,37 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Step 02: Welcome Screen ───────────────────────────────────────────────
-  Widget _buildStep02Welcome() {
-    return Stack(
-      children: [
-        // Mountain peak atmosphere gradient
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Color(0xFF162024),
-                  Color(0xFF233036),
-                  Color(0xFF4A4E46),
-                  Color(0xFF8A6C4A),
-                  Color(0xFF121214),
-                ],
-                stops: [0.0, 0.35, 0.6, 0.8, 1.0],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
-          ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Spacer(flex: 2),
-                Text(
-                  'WELCOME',
-                  style: AppTypography.eyebrow.copyWith(
-                    color: Colors.white70,
-                    letterSpacing: 2.5,
-                    fontSize: 11,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Begin the day with\nsomething steady.',
-                  style: AppTypography.displaySerifLarge.copyWith(
-                    fontSize: 34,
-                    color: Colors.white,
-                    height: 1.15,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Four faith declarations, a two-minute devotional, and the Bible — all in one quiet place.',
-                  style: AppTypography.body.copyWith(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-                const Spacer(flex: 3),
-                ElevatedButton(
-                  onPressed: _nextPage,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.boneCard,
-                    foregroundColor: AppColors.boneInk,
-                    minimumSize: const Size(double.infinity, 54),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
-                  ),
-                  child: Text(
-                    'Start',
-                    style: AppTypography.button.copyWith(color: AppColors.boneInk, fontSize: 15),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: TextButton(
-                    onPressed: _openLogin,
-                    child: Text(
-                      'Log in',
-                      style: AppTypography.button.copyWith(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Step 03: Name Screen ──────────────────────────────────────────────────
-  Widget _buildStep03Name() {
-    final provider = context.watch<OnboardingProvider>();
-
-    return SafeArea(
-      child: Column(
-        children: [
-          _buildTopNavBar(stepIndex: 0),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 40),
-                  Text(
-                    "What's your name?",
-                    style: AppTypography.displaySerifLarge.copyWith(fontSize: 30),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Your declarations are spoken to you by name.',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.surfaceBorder),
-                    ),
-                    child: TextField(
-                      controller: _nameController,
-                      onChanged: (val) => provider.setName(val),
-                      style: AppTypography.headingSerif.copyWith(
-                        fontSize: 20,
-                        color: AppColors.textPrimary,
-                      ),
-                      cursorColor: AppColors.accent,
-                      decoration: InputDecoration(
-                        hintText: 'Your name',
-                        hintStyle: AppTypography.headingSerif.copyWith(
-                          fontSize: 20,
-                          color: AppColors.textTertiary,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        filled: false,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  ElevatedButton(
-                    onPressed: () {
-                      provider.setName(_nameController.text);
-                      _nextPage();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.boneCard,
-                      foregroundColor: AppColors.boneInk,
-                      minimumSize: const Size(double.infinity, 54),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
-                    ),
-                    child: Text(
-                      'Next',
-                      style: AppTypography.button.copyWith(color: AppColors.boneInk, fontSize: 15),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Center(
-                    child: Text(
-                      'You can change this later in your profile.',
-                      style: AppTypography.caption.copyWith(color: AppColors.textTertiary),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Step 04: Content Preference (Gender) ──────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
+  // Screen 04 — Content Preference (Gender)
+  // Fondo: INK plana
+  // "Who are your declarations written for?" · For women / For men + Next
+  // ───────────────────────────────────────────────────────────────────────────
   Widget _buildStep04ContentPreference() {
     final provider = context.watch<OnboardingProvider>();
 
-    return SafeArea(
-      child: Column(
+    return PScreen(
+      background: const PScreenBackground.ink(),
+      hasNav: false,
+      padding: EdgeInsets.zero,
+      body: Column(
         children: [
           _buildTopNavBar(stepIndex: 1),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
+              padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 28),
                   Text(
                     'Who are your\ndeclarations written\nfor?',
-                    style: AppTypography.displaySerifLarge.copyWith(fontSize: 30, height: 1.15),
+                    style: PType.display.copyWith(fontSize: 30, height: 1.15),
                   ),
                   const SizedBox(height: 12),
                   Text(
                     'This shapes the voice and wording only.',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
+                    style: PType.body.copyWith(
+                      color: PColors.bone70,
                       fontSize: 14,
                     ),
                   ),
@@ -441,18 +420,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     onTap: () => provider.setGender('hombres'),
                   ),
                   const Spacer(),
-                  ElevatedButton(
-                    onPressed: _nextPage,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.boneCard,
-                      foregroundColor: AppColors.boneInk,
-                      minimumSize: const Size(double.infinity, 54),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
-                    ),
-                    child: Text(
-                      'Next',
-                      style: AppTypography.button.copyWith(color: AppColors.boneInk, fontSize: 15),
-                    ),
+                  _PrimaryPillButton(
+                    label: 'Next',
+                    onTap: _nextPage,
                   ),
                   const SizedBox(height: 24),
                 ],
@@ -470,16 +440,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    return PInteractive(
       onTap: onTap,
+      pressedScale: 0.985,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
+          color: isSelected ? PColors.glassFill.withValues(alpha: 0.25) : PColors.glassFill,
+          borderRadius: BorderRadius.circular(PRadius.tile),
           border: Border.all(
-            color: isSelected ? AppColors.boneCard : AppColors.surfaceBorder,
-            width: isSelected ? 1.2 : 0.8,
+            color: isSelected ? PColors.bone : PColors.glassStroke,
+            width: isSelected ? 1.4 : 1.0,
           ),
         ),
         child: Row(
@@ -490,15 +461,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               children: [
                 Text(
                   title,
-                  style: AppTypography.body.copyWith(
+                  style: PType.uiStrong.copyWith(
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
+                    color: PColors.bone,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: AppTypography.caption.copyWith(color: AppColors.textTertiary),
+                  style: PType.meta.copyWith(color: PColors.bone50),
                 ),
               ],
             ),
@@ -507,14 +479,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               height: 24,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isSelected ? AppColors.boneCard : Colors.transparent,
+                color: isSelected ? PColors.bone : Colors.transparent,
                 border: Border.all(
-                  color: isSelected ? AppColors.boneCard : AppColors.textTertiary,
+                  color: isSelected ? PColors.bone : PColors.bone50,
                   width: 1.5,
                 ),
               ),
               child: isSelected
-                  ? const Icon(Icons.check_rounded, color: AppColors.boneInk, size: 16)
+                  ? const Icon(Icons.check_rounded, color: PColors.ink, size: 16)
                   : null,
             ),
           ],
@@ -523,43 +495,48 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Step 05: Topics Selection ─────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
+  // Screen 05 — Topics
+  // Fondo: INK plana
+  // "What would you like to strengthen?" · 12 chips · contador · Next
+  // ───────────────────────────────────────────────────────────────────────────
   Widget _buildStep05Topics() {
     final provider = context.watch<OnboardingProvider>();
     final topicsProvider = context.watch<TopicsProvider>();
 
-    // Load focus areas from DB if not loaded yet
     if (provider.focusAreas.isEmpty && !provider.isLoadingFocusAreas) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         provider.loadFocusAreas();
       });
     }
 
-    // Strengths loaded dynamically 100% from database
     final allTopics = provider.focusAreas.isNotEmpty
         ? provider.focusAreas.map((f) => f.name).toList()
         : topicsProvider.currentTopics.map((t) => t.title).toList();
 
-    return SafeArea(
-      child: Column(
+    return PScreen(
+      background: const PScreenBackground.ink(),
+      hasNav: false,
+      padding: EdgeInsets.zero,
+      body: Column(
         children: [
           _buildTopNavBar(stepIndex: 2),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
+              padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 24),
                   Text(
                     'What would you like\nto strengthen?',
-                    style: AppTypography.displaySerifLarge.copyWith(fontSize: 30, height: 1.15),
+                    style: PType.display.copyWith(fontSize: 30, height: 1.15),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     'Pick three or more areas to personalize your daily declarations.',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
+                    style: PType.body.copyWith(
+                      color: PColors.bone70,
                       fontSize: 14,
                     ),
                   ),
@@ -569,22 +546,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     runSpacing: 12,
                     children: allTopics.map((topic) {
                       final isSelected = provider.isTopicSelected(topic);
-                      return GestureDetector(
+                      return PInteractive(
                         onTap: () => provider.toggleTopic(topic),
+                        pressedScale: 0.96,
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
+                          duration: const Duration(milliseconds: 180),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
-                            color: isSelected ? AppColors.boneCard : AppColors.surface,
-                            borderRadius: BorderRadius.circular(24),
+                            color: isSelected ? PColors.bone : PColors.glassFill,
+                            borderRadius: BorderRadius.circular(PRadius.chip),
                             border: Border.all(
-                              color: isSelected ? AppColors.boneCard : AppColors.surfaceBorder,
+                              color: isSelected ? PColors.bone : PColors.glassStroke,
                             ),
                           ),
                           child: Text(
                             topic,
-                            style: AppTypography.bodySmall.copyWith(
-                              color: isSelected ? AppColors.boneInk : AppColors.textPrimary,
+                            style: PType.uiStrong.copyWith(
+                              color: isSelected ? PColors.ink : PColors.bone,
                               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                               fontSize: 13,
                             ),
@@ -596,21 +574,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   const SizedBox(height: 28),
                   Text(
                     '${provider.selectedTopics.length} selected',
-                    style: AppTypography.caption.copyWith(color: AppColors.textTertiary),
+                    style: PType.counter.copyWith(color: PColors.bone62),
                   ),
-                  const SizedBox(height: 14),
-                  ElevatedButton(
-                    onPressed: _nextPage,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.boneCard,
-                      foregroundColor: AppColors.boneInk,
-                      minimumSize: const Size(double.infinity, 54),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
-                    ),
-                    child: Text(
-                      'Next',
-                      style: AppTypography.button.copyWith(color: AppColors.boneInk, fontSize: 15),
-                    ),
+                  const SizedBox(height: 16),
+                  _PrimaryPillButton(
+                    label: 'Next',
+                    onTap: _nextPage,
                   ),
                   const SizedBox(height: 28),
                 ],
@@ -622,7 +591,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Step 06: Reminder Screen ──────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
+  // Screen 06 — Reminder
+  // Fondo: INK plana
+  // Segmented Morning/Afternoon/Evening · selector horario (6:15 AM) · Next
+  // ───────────────────────────────────────────────────────────────────────────
   Widget _buildStep06Reminder() {
     final provider = context.watch<OnboardingProvider>();
 
@@ -648,76 +621,85 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       availableTimes.insert(0, provider.reminderTime);
     }
 
-    return SafeArea(
-      child: Column(
+    return PScreen(
+      background: const PScreenBackground.ink(),
+      hasNav: false,
+      padding: EdgeInsets.zero,
+      body: Column(
         children: [
           _buildTopNavBar(stepIndex: 3),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
+              padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 24),
                   Text(
                     'When should we reach\nyou?',
-                    style: AppTypography.displaySerifLarge.copyWith(fontSize: 30, height: 1.15),
+                    style: PType.display.copyWith(fontSize: 30, height: 1.15),
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'One notification a day. Morning, afternoon or night.',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
+                    'One notification a day. Nothing else.',
+                    style: PType.body.copyWith(
+                      color: PColors.bone70,
                       fontSize: 14,
                     ),
                   ),
                   const SizedBox(height: 24),
 
-                  // Period Pills: Morning / Afternoon / Evening
-                  Row(
-                    children: ['Morning', 'Afternoon', 'Evening'].map((period) {
-                      final isSelected = provider.reminderPeriod == period;
-                      return Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            provider.setReminderPeriod(period);
-                            final defaultForPeriod = periodTimes[period]!.first;
-                            provider.setReminderTime(defaultForPeriod);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 11),
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            decoration: BoxDecoration(
-                              color: isSelected ? AppColors.surfaceElevated : Colors.transparent,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: isSelected ? AppColors.surfaceBorder : Colors.transparent,
+                  // Segmented Morning / Afternoon / Evening
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: PColors.glassFill,
+                      borderRadius: BorderRadius.circular(PRadius.chip),
+                      border: Border.all(color: PColors.hairline),
+                    ),
+                    child: Row(
+                      children: ['Morning', 'Afternoon', 'Evening'].map((period) {
+                        final isSelected = provider.reminderPeriod == period;
+                        return Expanded(
+                          child: PInteractive(
+                            onTap: () {
+                              provider.setReminderPeriod(period);
+                              final defaultForPeriod = periodTimes[period]!.first;
+                              provider.setReminderTime(defaultForPeriod);
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 160),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isSelected ? PColors.bone : Colors.transparent,
+                                borderRadius: BorderRadius.circular(PRadius.chip - 2),
                               ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                period,
-                                style: AppTypography.caption.copyWith(
-                                  color: isSelected ? AppColors.textPrimary : AppColors.textTertiary,
-                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                              child: Center(
+                                child: Text(
+                                  period,
+                                  style: PType.uiStrong.copyWith(
+                                    fontSize: 12.5,
+                                    color: isSelected ? PColors.ink : PColors.bone62,
+                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    }).toList(),
+                        );
+                      }).toList(),
+                    ),
                   ),
                   const SizedBox(height: 20),
 
-                  // Hours Wrap Selector Card
+                  // Hours Selector Card
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: AppColors.surfaceBorder),
+                      color: PColors.glassFill,
+                      borderRadius: BorderRadius.circular(PRadius.tile),
+                      border: Border.all(color: PColors.hairline),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -726,18 +708,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           children: [
                             Text(
                               '$currentPeriod hours',
-                              style: AppTypography.caption.copyWith(
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: PType.meta.copyWith(color: PColors.bone62),
                             ),
                             const Spacer(),
                             Text(
                               provider.reminderTime,
-                              style: const TextStyle(
+                              style: PType.uiStrong.copyWith(
                                 fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFFC8A97E),
+                                color: const Color(0xFFD4AF37),
                               ),
                             ),
                           ],
@@ -748,24 +726,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           runSpacing: 10,
                           children: availableTimes.map((t) {
                             final isSelected = provider.reminderTime == t;
-                            return GestureDetector(
+                            return PInteractive(
                               onTap: () => provider.setReminderTime(t),
                               child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
+                                duration: const Duration(milliseconds: 160),
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: isSelected ? AppColors.boneCard : AppColors.surfaceElevated,
-                                  borderRadius: BorderRadius.circular(18),
+                                  color: isSelected ? PColors.bone : PColors.glassFill,
+                                  borderRadius: BorderRadius.circular(PRadius.chip),
                                   border: Border.all(
-                                    color: isSelected ? AppColors.boneCard : AppColors.surfaceBorder,
+                                    color: isSelected ? PColors.bone : PColors.glassStroke,
                                   ),
                                 ),
                                 child: Text(
                                   t,
-                                  style: TextStyle(
+                                  style: PType.uiStrong.copyWith(
                                     fontSize: 12.5,
-                                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-                                    color: isSelected ? AppColors.boneInk : AppColors.textPrimary,
+                                    color: isSelected ? PColors.ink : PColors.bone,
                                   ),
                                 ),
                               ),
@@ -778,26 +755,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   const SizedBox(height: 16),
 
                   // Pick Custom Time button
-                  GestureDetector(
+                  PInteractive(
                     onTap: () => _pickCustomTime(context, provider),
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.surfaceBorder),
+                        color: PColors.glassFill,
+                        borderRadius: BorderRadius.circular(PRadius.tile),
+                        border: Border.all(color: PColors.hairline),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.access_time_rounded, color: Color(0xFFC8A97E), size: 18),
+                          const Icon(Icons.access_time_rounded, color: Color(0xFFD4AF37), size: 18),
                           const SizedBox(width: 8),
                           Text(
                             'Pick any specific time (${provider.reminderTime})',
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w500,
+                            style: PType.uiStrong.copyWith(
+                              color: PColors.bone,
                               fontSize: 13,
                             ),
                           ),
@@ -807,18 +783,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                   const SizedBox(height: 28),
 
-                  ElevatedButton(
-                    onPressed: _nextPage,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.boneCard,
-                      foregroundColor: AppColors.boneInk,
-                      minimumSize: const Size(double.infinity, 54),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
-                    ),
-                    child: Text(
-                      'Next',
-                      style: AppTypography.button.copyWith(color: AppColors.boneInk, fontSize: 15),
-                    ),
+                  _PrimaryPillButton(
+                    label: 'Next',
+                    onTap: _nextPage,
                   ),
                   const SizedBox(height: 28),
                 ],
@@ -833,15 +800,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _pickCustomTime(BuildContext context, OnboardingProvider provider) async {
     final picked = await showTimePicker(
       context: context,
-      initialTime: const TimeOfDay(hour: 7, minute: 0),
+      initialTime: const TimeOfDay(hour: 6, minute: 15),
       builder: (ctx, child) {
         return Theme(
           data: ThemeData.dark().copyWith(
             colorScheme: const ColorScheme.dark(
-              primary: Color(0xFFC8A97E),
-              onPrimary: Color(0xFF141310),
-              surface: Color(0xFF1E1C1A),
-              onSurface: Color(0xFFF4F2EC),
+              primary: PColors.bone,
+              onPrimary: PColors.ink,
+              surface: PColors.ink,
+              onSurface: PColors.bone,
             ),
           ),
           child: child!,
@@ -866,137 +833,110 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  // ── Step 07: Ready Screen ─────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
+  // Screen 07 — Ready
+  // Fondo: FOTO photo-milestone + scrim
+  // "Ready" · "Sarah, your first four declarations are waiting." · Enter PREGARE
+  // ───────────────────────────────────────────────────────────────────────────
   Widget _buildStep07Ready() {
     final provider = context.watch<OnboardingProvider>();
     final displayName = provider.getDisplayName() ?? 'Friend';
     final topicsSummary = provider.selectedTopics.take(3).join(', ');
 
-    return Stack(
-      children: [
-        // Twilight lake sunrise background
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Color(0xFF141920),
-                  Color(0xFF26333D),
-                  Color(0xFF6B482E),
-                  Color(0xFFC68B45),
-                  Color(0xFF16151A),
-                ],
-                stops: [0.0, 0.4, 0.65, 0.82, 1.0],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
+    return PScreen(
+      background: const PScreenBackground.photo(
+        'assets/photo-milestone.jpg',
+        scrim: PScrims.home,
+      ),
+      hasNav: false,
+      padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Spacer(flex: 3),
+          const PEyebrow('READY'),
+          const SizedBox(height: 14),
+          Text(
+            '$displayName, your first\nfour declarations\nare waiting.',
+            style: PType.display.copyWith(
+              fontSize: 32,
+              color: PColors.bone,
+              height: 1.15,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '$topicsSummary — every morning at ${provider.reminderTime}.',
+            style: PType.body.copyWith(
+              color: PColors.bone70,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+          const Spacer(flex: 3),
+          _PrimaryPillButton(
+            label: 'Enter PREGARE',
+            onTap: _finishOnboarding,
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: PInteractive(
+              onTap: () {
+                AuthPromptSheet.show(
+                  context,
+                  onSuccess: _finishOnboarding,
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  'Create account to back up',
+                  style: PType.uiStrong.copyWith(
+                    color: PColors.bone70,
+                    fontSize: 13,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Spacer(flex: 3),
-                Text(
-                  'READY',
-                  style: AppTypography.eyebrow.copyWith(
-                    color: Colors.white70,
-                    letterSpacing: 2.5,
-                    fontSize: 11,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  '$displayName, your first\nfour declarations\nare waiting.',
-                  style: AppTypography.displaySerifLarge.copyWith(
-                    fontSize: 32,
-                    color: Colors.white,
-                    height: 1.15,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '$topicsSummary — every morning at ${provider.reminderTime}.',
-                  style: AppTypography.body.copyWith(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-                const Spacer(flex: 3),
-                ElevatedButton(
-                  onPressed: _finishOnboarding,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF16151A),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 54),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(99),
-                      side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                    ),
-                  ),
-                  child: Text(
-                    'Enter PREGARE',
-                    style: AppTypography.button.copyWith(color: Colors.white, fontSize: 15),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: TextButton(
-                    onPressed: () {
-                      AuthPromptSheet.show(
-                        context,
-                        onSuccess: _finishOnboarding,
-                      );
-                    },
-                    child: Text(
-                      'Create account to back up',
-                      style: AppTypography.button.copyWith(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-            ),
-          ),
-        ),
-      ],
+          const SizedBox(height: 16),
+        ],
+      ),
     );
   }
 }
 
-/// Custom painter for PREGARE flowing arch symbol
-class _PregareSymbolPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.boneCard
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.2
-      ..strokeCap = StrokeCap.round;
+// ─────────────────────────────────────────────────────────────────────────────
+// Reusable Pill Button for Onboarding (Height 52, Pill shape, PColors.bone)
+// ─────────────────────────────────────────────────────────────────────────────
+class _PrimaryPillButton extends StatelessWidget {
+  const _PrimaryPillButton({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
 
-    final path = Path();
-    path.moveTo(4, size.height - 4);
-    path.cubicTo(
-      size.width * 0.25, 4,
-      size.width * 0.35, 4,
-      size.width * 0.5, size.height - 8,
+  @override
+  Widget build(BuildContext context) {
+    return PInteractive(
+      onTap: onTap,
+      pressedScale: 0.985,
+      hoverScale: 1.01,
+      child: Container(
+        width: double.infinity,
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: PColors.bone,
+          borderRadius: BorderRadius.circular(PRadius.pill),
+        ),
+        child: Text(
+          label,
+          style: PType.uiStrong.copyWith(
+            color: PColors.ink,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
-    path.cubicTo(
-      size.width * 0.65, 4,
-      size.width * 0.75, 4,
-      size.width - 4, size.height - 4,
-    );
-    canvas.drawPath(path, paint);
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

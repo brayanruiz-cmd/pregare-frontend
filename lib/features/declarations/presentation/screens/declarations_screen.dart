@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +12,13 @@ import '../../domain/models/declaration.dart';
 import '../../domain/models/topic_labels.dart';
 import '../providers/declaration_provider.dart';
 
+// ─── Flow 04 States (Screens 14, 15/16, 18) ──────────────────────────────────
+enum _DeclarationFlowState {
+  intro, // Screen 14: Daily introduction
+  flip, // Screen 15 & 16: Declaration card with 3D Flip
+  completed, // Screen 18: Completed 4/4
+}
+
 // ─── Local item model for UI & Sharing ───────────────────────────────────────
 class DeclarationItem {
   final String scriptureText;
@@ -21,6 +27,7 @@ class DeclarationItem {
   final String topic;
   final int dayNumber;
   final String gender;
+  final int stepIndex; // 0..3
 
   const DeclarationItem({
     required this.scriptureText,
@@ -29,6 +36,7 @@ class DeclarationItem {
     required this.topic,
     required this.dayNumber,
     required this.gender,
+    this.stepIndex = 0,
   });
 }
 
@@ -40,28 +48,23 @@ class DeclarationsScreen extends StatefulWidget {
   State<DeclarationsScreen> createState() => _DeclarationsScreenState();
 }
 
-class _DeclarationsScreenState extends State<DeclarationsScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulseController;
+class _DeclarationsScreenState extends State<DeclarationsScreen> {
+  _DeclarationFlowState _flowState = _DeclarationFlowState.intro;
+  int _cardIndex = 0;
 
-  // Track revealed and proclaimed status per gender so switching genders preserves both!
-  final Set<String> _revealedGenders = {};
+  // Track proclaimed status per gender so switching genders preserves both!
   final Set<String> _proclaimedGenders = {};
 
   @override
   void initState() {
     super.initState();
 
-    // Pulse animation for the sacred seal before revelation
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat(reverse: true);
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthProvider>();
       final provider = context.read<DeclarationProvider>();
-      context.read<StreaksProvider>().loadProclaimedDeclarations();
+      final streaks = context.read<StreaksProvider>();
+
+      streaks.loadProclaimedDeclarations();
 
       String targetGender = provider.selectedGender;
       final userGender = auth.currentSession?.user.gender;
@@ -76,25 +79,56 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
       }
 
       provider.loadTodayDeclaration(gender: targetGender);
+      provider.loadDeclarations();
+
+      // Check if already proclaimed today
+      _checkProclaimedStatus(targetGender);
     });
   }
 
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
+  void _checkProclaimedStatus(String gender) {
+    final streaks = context.read<StreaksProvider>();
+    final provider = context.read<DeclarationProvider>();
+    final decl = provider.todayDeclaration;
+
+    final isAlreadyProclaimed = (decl != null &&
+            (streaks.proclaimedDeclarationIds.contains(decl.id.toString()) ||
+                (decl.dayNumber != null &&
+                    (streaks.proclaimedDeclarationIds
+                            .contains('${decl.gender}_${decl.dayNumber}') ||
+                        streaks.proclaimedDeclarationIds.contains(
+                            '${decl.gender}_day_${decl.dayNumber}'))))) ||
+        _proclaimedGenders.contains(gender);
+
+    if (isAlreadyProclaimed && _flowState == _DeclarationFlowState.intro) {
+      setState(() {
+        _flowState = _DeclarationFlowState.completed;
+      });
+    }
   }
 
-  void _triggerReveal(String gender) {
-    HapticFeedback.mediumImpact();
+  void _onGenderChanged(String newGender) {
+    final provider = context.read<DeclarationProvider>();
+    provider.setGender(newGender);
     setState(() {
-      _revealedGenders.add(gender);
+      _cardIndex = 0;
     });
-  }
 
-  void _resetReveal(String gender) {
+    final streaks = context.read<StreaksProvider>();
+    final decl = provider.todayDeclaration;
+    final isAlreadyProclaimed = (decl != null &&
+            (streaks.proclaimedDeclarationIds.contains(decl.id.toString()) ||
+                (decl.dayNumber != null &&
+                    (streaks.proclaimedDeclarationIds
+                            .contains('${decl.gender}_${decl.dayNumber}') ||
+                        streaks.proclaimedDeclarationIds.contains(
+                            '${decl.gender}_day_${decl.dayNumber}'))))) ||
+        _proclaimedGenders.contains(newGender);
+
     setState(() {
-      _revealedGenders.remove(gender);
+      _flowState = isAlreadyProclaimed
+          ? _DeclarationFlowState.completed
+          : _DeclarationFlowState.intro;
     });
   }
 
@@ -116,9 +150,14 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
         '«${item.declarationText}»\n\n${item.scriptureRef}\n"${item.scriptureText}"\n\n— Via Pregare';
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Declaration copied to clipboard'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: Text(
+          'Declaration copied to clipboard',
+          style: PType.body.copyWith(color: PColors.bone, fontSize: 13),
+        ),
+        backgroundColor: PColors.ink,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -140,29 +179,17 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
     HapticFeedback.mediumImpact();
     setState(() {
       _proclaimedGenders.add(gender);
+      _flowState = _DeclarationFlowState.completed;
     });
 
     final streaks = context.read<StreaksProvider>();
     await streaks.proclaimDeclaration(declaration.id.toString());
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Amen! You have proclaimed today\'s declaration.',
-            style: PType.body.copyWith(color: PColors.bone, fontSize: 13),
-          ),
-          backgroundColor: PColors.ink,
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
   }
 
-  DeclarationItem _buildItem(Declaration d) {
+  DeclarationItem _buildItem(Declaration d, {int step = 0}) {
     final topicKey = d.topics.isNotEmpty ? d.topics.first : '';
-    final topicName = topicLabels[topicKey] ?? (topicKey.isNotEmpty ? topicKey : 'Faith');
+    final topicName =
+        topicLabels[topicKey] ?? (topicKey.isNotEmpty ? topicKey : 'Faith');
     return DeclarationItem(
       scriptureText: d.verse,
       scriptureRef: d.reference,
@@ -170,7 +197,53 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
       topic: topicName,
       dayNumber: d.dayNumber ?? 1,
       gender: d.gender,
+      stepIndex: step,
     );
+  }
+
+  String _formatCurrentDate() {
+    final now = DateTime.now();
+    const weekdays = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ];
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
+    final weekday = weekdays[now.weekday - 1];
+    final month = months[now.month - 1];
+    return '$weekday, ${now.day} $month';
+  }
+
+  String _wordForIndex(int index) {
+    switch (index) {
+      case 0:
+        return 'one';
+      case 1:
+        return 'two';
+      case 2:
+        return 'three';
+      case 3:
+        return 'four';
+      default:
+        return '${index + 1}';
+    }
   }
 
   @override
@@ -178,10 +251,16 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
     final provider = context.watch<DeclarationProvider>();
     final streaks = context.watch<StreaksProvider>();
     final currentGender = provider.selectedGender;
-    final isRevealed = _revealedGenders.contains(currentGender);
-    final declaration = provider.todayDeclaration;
-    final isProclaimed = (declaration != null &&
-            streaks.proclaimedDeclarationIds.contains(declaration.id.toString())) ||
+    final primaryDeclaration = provider.todayDeclaration;
+
+    final isProclaimed = (primaryDeclaration != null &&
+            (streaks.proclaimedDeclarationIds
+                    .contains(primaryDeclaration.id.toString()) ||
+                (primaryDeclaration.dayNumber != null &&
+                    (streaks.proclaimedDeclarationIds.contains(
+                            '${primaryDeclaration.gender}_${primaryDeclaration.dayNumber}') ||
+                        streaks.proclaimedDeclarationIds.contains(
+                            '${primaryDeclaration.gender}_day_${primaryDeclaration.dayNumber}'))))) ||
         _proclaimedGenders.contains(currentGender);
 
     final state = provider.todayState;
@@ -197,7 +276,8 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
 
     if (state is AsyncError && provider.todayDeclaration == null) {
       return PScreen(
-        background: const PScreenBackground.photo('assets/photo-dawn.jpg', scrim: PScrims.home),
+        background: const PScreenBackground.photo('assets/photo-dawn.jpg',
+            scrim: PScrims.home),
         hasNav: false,
         padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
         body: SafeArea(
@@ -206,21 +286,10 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
               const SizedBox(height: 12),
               Row(
                 children: [
-                  PInteractive(
+                  _HeaderIconButton(
+                    icon: Icons.close_rounded,
                     onTap: _exitToHome,
                     tooltip: 'Back to home',
-                    builder: (context, isHovered, isPressed) => Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: PColors.glassFill,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: PColors.glassStroke),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.close, color: PColors.bone, size: 20),
-                      ),
-                    ),
                   ),
                 ],
               ),
@@ -231,14 +300,18 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
                     children: [
                       const PEyebrow('No declarations available'),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Could not connect to server',
-                        style: TextStyle(color: PColors.bone70, fontSize: 13),
+                        style: PType.body.copyWith(
+                            color: PColors.bone70, fontSize: 13),
                       ),
                       const SizedBox(height: 20),
                       _PrimaryButton(
                         label: 'Retry',
-                        onTap: () => provider.loadTodayDeclaration(forceReload: true),
+                        onTap: () {
+                          provider.loadTodayDeclaration(forceReload: true);
+                          provider.loadDeclarations();
+                        },
                       ),
                     ],
                   ),
@@ -250,228 +323,515 @@ class _DeclarationsScreenState extends State<DeclarationsScreen>
       );
     }
 
-    if (declaration == null) {
+    if (primaryDeclaration == null) {
       return const Scaffold(
         backgroundColor: PColors.inkDeep,
         body: Center(child: CircularProgressIndicator(color: PColors.bone)),
       );
     }
 
-    final item = _buildItem(declaration);
+    // Build the list of up to 4 declarations for today
+    final List<Declaration> declarationsList =
+        provider.currentDeclarations.isNotEmpty
+            ? provider.currentDeclarations
+            : [primaryDeclaration];
+
+    final int totalDeclarations = declarationsList.length > 4 ? 4 : declarationsList.length;
+    final int activeCardIndex =
+        _cardIndex.clamp(0, totalDeclarations > 0 ? totalDeclarations - 1 : 0);
+    final activeDecl = declarationsList[activeCardIndex];
+    final activeItem = _buildItem(activeDecl, step: activeCardIndex);
+
+    // Pick background photo based on screen state
+    final bgPhoto = _flowState == _DeclarationFlowState.intro
+        ? 'assets/photo-dawn.jpg'
+        : 'assets/photo-declarations.jpg';
 
     return PScreen(
-      background: const PScreenBackground.photo('assets/photo-dawn.jpg', scrim: PScrims.home),
+      background: PScreenBackground.photo(bgPhoto, scrim: PScrims.home),
       hasNav: false,
       padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 540),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 12),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 320),
+            child: _buildFlowBody(
+              flowState: _flowState,
+              currentGender: currentGender,
+              totalDeclarations: totalDeclarations,
+              activeCardIndex: activeCardIndex,
+              activeDecl: activeDecl,
+              activeItem: activeItem,
+              isProclaimed: isProclaimed,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-              // ── Top Bar: Close (✕) + Day indicator + Action icons ─────────
-              Row(
-                children: [
-                  PInteractive(
-                    onTap: _exitToHome,
-                    tooltip: 'Back to home',
-                    builder: (context, isHovered, isPressed) => Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: isHovered
-                            ? PColors.glassFill.withValues(alpha: 0.28)
-                            : PColors.glassFill,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isHovered ? PColors.bone50 : PColors.hairline,
-                        ),
+  Widget _buildFlowBody({
+    required _DeclarationFlowState flowState,
+    required String currentGender,
+    required int totalDeclarations,
+    required int activeCardIndex,
+    required Declaration activeDecl,
+    required DeclarationItem activeItem,
+    required bool isProclaimed,
+  }) {
+    switch (flowState) {
+      case _DeclarationFlowState.intro:
+        return _buildScreen14Intro(
+          currentGender: currentGender,
+          totalDeclarations: totalDeclarations,
+        );
+      case _DeclarationFlowState.flip:
+        return _buildScreen15Flip(
+          currentGender: currentGender,
+          totalDeclarations: totalDeclarations,
+          activeCardIndex: activeCardIndex,
+          activeDecl: activeDecl,
+          activeItem: activeItem,
+          isProclaimed: isProclaimed,
+        );
+      case _DeclarationFlowState.completed:
+        return _buildScreen18Completed(
+          currentGender: currentGender,
+          activeItem: activeItem,
+        );
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // SCREEN 14 — Daily Introduction (photo-dawn)
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildScreen14Intro({
+    required String currentGender,
+    required int totalDeclarations,
+  }) {
+    return Column(
+      key: const ValueKey('screen-14-intro'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+
+        // Top bar: Close (✕) + Gender selector
+        Row(
+          children: [
+            _HeaderIconButton(
+              icon: Icons.close_rounded,
+              onTap: _exitToHome,
+              tooltip: 'Back to home',
+            ),
+            const Spacer(),
+            _GenderSelector(
+              selectedGender: currentGender,
+              onChanged: _onGenderChanged,
+            ),
+            const Spacer(),
+            const SizedBox(width: 36),
+          ],
+        ),
+
+        const Spacer(flex: 3),
+
+        // Date headline ("Thursday, 28 August")
+        Text(
+          _formatCurrentDate(),
+          style: PType.meta.copyWith(
+            color: PColors.bone70,
+            fontSize: 13,
+            letterSpacing: 0.5,
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // Title ("Today I declare")
+        Text(
+          'Today I declare',
+          style: PType.display.copyWith(
+            color: PColors.bone,
+            fontSize: 34,
+            height: 1.15,
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // Subtitle ("Four declarations, drawn from Scripture and written for you. Take them slowly.")
+        Text(
+          'Four declarations, drawn from Scripture and written for you. Take them slowly.',
+          style: PType.body.copyWith(
+            color: PColors.bone70,
+            fontSize: 16,
+            height: 1.45,
+          ),
+        ),
+
+        const SizedBox(height: 28),
+
+        // 4 Progress dashes (inactive)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(4, (index) {
+            return Container(
+              width: 28,
+              height: 2.5,
+              margin: const EdgeInsets.symmetric(horizontal: 2.5),
+              decoration: BoxDecoration(
+                color: PColors.bone.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        ),
+
+        const Spacer(flex: 4),
+
+        // Button ("Begin")
+        _PrimaryButton(
+          label: 'Begin',
+          onTap: () {
+            HapticFeedback.lightImpact();
+            setState(() {
+              _flowState = _DeclarationFlowState.flip;
+              _cardIndex = 0;
+            });
+          },
+        ),
+
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // SCREEN 15 & 16 — Declaration Flip Card (photo-declarations)
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildScreen15Flip({
+    required String currentGender,
+    required int totalDeclarations,
+    required int activeCardIndex,
+    required Declaration activeDecl,
+    required DeclarationItem activeItem,
+    required bool isProclaimed,
+  }) {
+    final stepText =
+        '${(activeCardIndex + 1).toString().padLeft(2, '0')} / ${totalDeclarations.toString().padLeft(2, '0')}';
+    final isLastDeclaration = activeCardIndex >= totalDeclarations - 1;
+
+    return Column(
+      key: ValueKey('screen-15-flip-$activeCardIndex'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+
+        // Top Bar: Close (✕) + Step Counter with dashes + Action icons (Copy, Share)
+        Row(
+          children: [
+            _HeaderIconButton(
+              icon: Icons.close_rounded,
+              onTap: _exitToHome,
+              tooltip: 'Back to home',
+            ),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      stepText,
+                      style: PType.eyebrow.copyWith(
+                        letterSpacing: 2.0,
+                        fontWeight: FontWeight.w600,
+                        color: PColors.bone70,
+                        fontSize: 11,
                       ),
-                      child: const Icon(Icons.close_rounded, color: PColors.bone, size: 20),
                     ),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'DAY ${item.dayNumber} OF 365',
-                            style: PType.eyebrow.copyWith(
-                              letterSpacing: 2.0,
-                              fontWeight: FontWeight.w600,
-                              color: PColors.bone70,
-                              fontSize: 10,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'DAILY DECLARATION',
-                            style: PType.meta.copyWith(
-                              color: PColors.bone45,
-                              fontSize: 9,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (isRevealed)
+                    const SizedBox(height: 5),
                     Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        PInteractive(
-                          onTap: () => _copyToClipboard(item),
-                          tooltip: 'Copy text',
-                          builder: (context, isHovered, isPressed) => Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: isHovered
-                                  ? PColors.glassFill.withValues(alpha: 0.28)
-                                  : PColors.glassFill,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isHovered ? PColors.bone50 : PColors.hairline,
-                              ),
-                            ),
-                            child: const Icon(Icons.copy_rounded, color: PColors.bone, size: 16),
+                      children: List.generate(totalDeclarations, (idx) {
+                        final isPassed = idx <= activeCardIndex;
+                        return Container(
+                          width: 18,
+                          height: 2.0,
+                          margin: const EdgeInsets.symmetric(horizontal: 2.0),
+                          decoration: BoxDecoration(
+                            color: isPassed
+                                ? PColors.bone
+                                : PColors.bone.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(1),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        PInteractive(
-                          onTap: () => _resetReveal(currentGender),
-                          tooltip: 'Conceal declaration',
-                          builder: (context, isHovered, isPressed) => Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: isHovered
-                                  ? PColors.glassFill.withValues(alpha: 0.28)
-                                  : PColors.glassFill,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isHovered ? PColors.bone50 : PColors.hairline,
-                              ),
-                            ),
-                            child: const Icon(Icons.refresh_rounded, color: PColors.bone, size: 18),
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    const SizedBox(width: 36),
-                ],
-              ),
-
-              const SizedBox(height: 14),
-
-              // ── Gender Toggle Pills (Women / Men) ─────────────────────────
-              Center(
-                child: _GenderSelector(
-                  selectedGender: provider.selectedGender,
-                  onChanged: (newGender) {
-                    provider.setGender(newGender);
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // ── Main Card: Sealed or Revealed (PFlipCard with 3D Flip) ──
-              Expanded(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 540),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 700),
-                      switchInCurve: Curves.easeOutBack,
-                      switchOutCurve: Curves.easeInBack,
-                      transitionBuilder: (Widget child, Animation<double> animation) {
-                        final rotate = Tween(begin: math.pi / 2, end: 0.0).animate(animation);
-                        return AnimatedBuilder(
-                          animation: rotate,
-                          builder: (context, widget) {
-                            final isUnder = (ValueKey(isRevealed) != child.key);
-                            var value = isUnder ? math.min(rotate.value, math.pi / 2) : rotate.value;
-                            return Transform(
-                              transform: Matrix4.rotationY(value)..setEntry(3, 2, 0.0015),
-                              alignment: Alignment.center,
-                              child: widget,
-                            );
-                          },
-                          child: child,
                         );
-                      },
-                      child: !isRevealed
-                          ? _SealedCard(
-                              key: ValueKey('sealed-$currentGender'),
-                              pulseController: _pulseController,
-                              onRevealTap: () => _triggerReveal(currentGender),
-                            )
-                          : Padding(
-                              key: ValueKey('flip-${item.gender}-${item.dayNumber}'),
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: PFlipCard(
-                                scriptureText: item.scriptureText,
-                                scriptureRef: item.scriptureRef,
-                                declarationText: item.declarationText,
-                                topic: item.topic,
-                                scriptureEyebrow: 'SCRIPTURE',
-                                declarationEyebrow: 'TODAY I DECLARE',
-                                frontPrompt: 'Tap card to read the declaration',
-                                backPrompt: 'Tap card to return to Scripture',
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ── Bottom Action Button ──────────────────────────────────────
-              if (!isRevealed) ...[
-                _PrimaryButton(
-                  label: 'Reveal today\'s declaration ✨',
-                  onTap: () => _triggerReveal(currentGender),
-                ),
-                const SizedBox(height: 10),
-                Center(
-                  child: Text(
-                    '365 inspired declarations to walk in victory',
-                    style: PType.meta.copyWith(color: PColors.bone45, fontSize: 11),
-                  ),
-                ),
-              ] else ...[
-                Row(
-                  children: [
-                    _ShareIconButton(onTap: () => _openShareModal(item)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _PrimaryButton(
-                        label: isProclaimed ? 'Proclaimed today! ✓' : 'Proclaim in faith',
-                        onTap: isProclaimed ? null : () => _handleProclaim(declaration, currentGender),
-                      ),
+                      }),
                     ),
                   ],
                 ),
+              ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HeaderIconButton(
+                  icon: Icons.copy_rounded,
+                  onTap: () => _copyToClipboard(activeItem),
+                  tooltip: 'Copy text',
+                ),
+                const SizedBox(width: 8),
+                _HeaderIconButton(
+                  icon: Icons.ios_share_rounded,
+                  onTap: () => _openShareModal(activeItem),
+                  tooltip: 'Share declaration',
+                ),
               ],
+            ),
+          ],
+        ),
 
-              const SizedBox(height: 20),
-            ],
+        const SizedBox(height: 10),
+
+        // Gender Selector Toggle (WOMEN / MEN)
+        Center(
+          child: _GenderSelector(
+            selectedGender: currentGender,
+            onChanged: _onGenderChanged,
           ),
         ),
+
+        const SizedBox(height: 8),
+
+        // Live 3D Flip Card (PFlipCard with 950ms flip, no mirroring)
+        Expanded(
+          child: Center(
+            child: PFlipCard(
+              key: ValueKey(
+                  'flip-${activeItem.gender}-$activeCardIndex-${activeItem.dayNumber}'),
+              scriptureText: activeItem.scriptureText,
+              scriptureRef: activeItem.scriptureRef,
+              declarationText: activeItem.declarationText,
+              topic:
+                  '${activeItem.topic} · Declaration ${_wordForIndex(activeCardIndex)}',
+              scriptureEyebrow: 'SCRIPTURE',
+              declarationEyebrow: 'TODAY I DECLARE',
+              frontPrompt: 'Tap to read the declaration',
+              backPrompt: 'Tap to return to Scripture',
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Bottom Actions Row: Share icon + Next declaration / Proclaim in faith
+        Row(
+          children: [
+            _ShareIconButton(onTap: () => _openShareModal(activeItem)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _PrimaryButton(
+                label: !isLastDeclaration
+                    ? 'Next declaration'
+                    : (isProclaimed
+                        ? 'Today complete ✓'
+                        : 'Proclaim in faith'),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  if (!isLastDeclaration) {
+                    setState(() {
+                      _cardIndex = activeCardIndex + 1;
+                    });
+                  } else {
+                    _handleProclaim(activeDecl, currentGender);
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // SCREEN 18 — Completed 4/4 (photo-declarations)
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildScreen18Completed({
+    required String currentGender,
+    required DeclarationItem activeItem,
+  }) {
+    return Column(
+      key: const ValueKey('screen-18-completed'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+
+        // Top bar: Close (✕) + Gender selector
+        Row(
+          children: [
+            _HeaderIconButton(
+              icon: Icons.close_rounded,
+              onTap: _exitToHome,
+              tooltip: 'Back to home',
+            ),
+            const Spacer(),
+            _GenderSelector(
+              selectedGender: currentGender,
+              onChanged: _onGenderChanged,
+            ),
+            const Spacer(),
+            const SizedBox(width: 36),
+          ],
+        ),
+
+        const Spacer(flex: 3),
+
+        // 4 Completed progress dashes (all active)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(4, (index) {
+            return Container(
+              width: 32,
+              height: 2.5,
+              margin: const EdgeInsets.symmetric(horizontal: 2.5),
+              decoration: BoxDecoration(
+                color: PColors.bone,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        ),
+
+        const SizedBox(height: 24),
+
+        // Pregare Mark / Brand Logo
+        const PBrandLogo(
+          isLight: true,
+          height: 32,
+        ),
+
+        const SizedBox(height: 18),
+
+        // Eyebrow
+        const PEyebrow('DAY COMPLETE'),
+
+        const SizedBox(height: 12),
+
+        // Title ("You've spoken today's four declarations.")
+        Text(
+          'You\'ve spoken today\'s four declarations.',
+          style: PType.display.copyWith(
+            color: PColors.bone,
+            fontSize: 28,
+            height: 1.25,
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // Subtitle ("Four new ones arrive tomorrow morning. Nothing is lost if you miss a day.")
+        Text(
+          'Four new ones arrive tomorrow morning. Nothing is lost if you miss a day.',
+          style: PType.body.copyWith(
+            color: PColors.bone70,
+            fontSize: 15,
+            height: 1.45,
+          ),
+        ),
+
+        const Spacer(flex: 4),
+
+        // Primary action: Share today's declarations
+        _PrimaryButton(
+          label: 'Share today\'s declarations',
+          onTap: () => _openShareModal(activeItem),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Secondary action: Read the devotional · 2 min
+        _SecondaryOutlinedButton(
+          label: 'Read the devotional · 2 min',
+          onTap: () {
+            MainShell.setTab(context, 0);
+          },
+        ),
+
+        const SizedBox(height: 14),
+
+        // Tertiary link: Review / Read them again
+        Center(
+          child: PInteractive(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              setState(() {
+                _cardIndex = 0;
+                _flowState = _DeclarationFlowState.flip;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              child: Text(
+                'Read them again',
+                style: PType.meta.copyWith(
+                  color: PColors.bone70,
+                  fontSize: 13,
+                  decoration: TextDecoration.underline,
+                  decorationColor: PColors.bone50,
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Header Icon Button
+// ─────────────────────────────────────────────────────────────────────────────
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return PInteractive(
+      onTap: onTap,
+      tooltip: tooltip,
+      builder: (context, isHovered, isPressed) => Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: isHovered
+              ? PColors.glassFill.withValues(alpha: 0.28)
+              : PColors.glassFill,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isHovered ? PColors.bone50 : PColors.hairline,
+          ),
+        ),
+        child: Icon(icon, color: PColors.bone, size: 18),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Gender Selector (Women / Men)
+// Gender Selector (WOMEN / MEN)
 // ─────────────────────────────────────────────────────────────────────────────
 class _GenderSelector extends StatelessWidget {
   const _GenderSelector({
@@ -496,7 +856,7 @@ class _GenderSelector extends StatelessWidget {
         onTap: () => onChanged(value),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: isSelected
                 ? PColors.bone
@@ -512,15 +872,15 @@ class _GenderSelector extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                size: 14,
+                size: 13,
                 color: isSelected ? PColors.ink : PColors.bone62,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
               Text(
                 label,
                 style: PType.meta.copyWith(
                   color: isSelected ? PColors.ink : PColors.bone70,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   letterSpacing: 0.8,
                 ),
@@ -532,7 +892,7 @@ class _GenderSelector extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: PColors.ink.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(PRadius.pill),
@@ -561,131 +921,7 @@ class _GenderSelector extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sealed Card (Before user requests the revelation)
-// ─────────────────────────────────────────────────────────────────────────────
-class _SealedCard extends StatelessWidget {
-  const _SealedCard({
-    super.key,
-    required this.pulseController,
-    required this.onRevealTap,
-  });
-
-  final AnimationController pulseController;
-  final VoidCallback onRevealTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final availableH = constraints.maxHeight.isFinite ? constraints.maxHeight : 480.0;
-        final cardH = math.max(260.0, availableH - 34.0);
-
-        return PInteractive(
-          onTap: onRevealTap,
-          tooltip: 'Tap to reveal your declaration',
-          pressedScale: 0.98,
-          child: AnimatedBuilder(
-            animation: pulseController,
-            builder: (context, child) {
-              final pulse = pulseController.value;
-              final glowRadius = 16.0 + (pulse * 18.0);
-              final glowAlpha = 0.12 + (pulse * 0.14);
-
-              return Container(
-                width: double.infinity,
-                height: cardH,
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: PColors.ink.withValues(alpha: 0.90),
-                  borderRadius: BorderRadius.circular(PRadius.flip),
-                  border: Border.all(
-                    color: Color.lerp(PColors.glassStroke, const Color(0xFFD4AF37), pulse * 0.5)!,
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFD4AF37).withValues(alpha: glowAlpha),
-                      blurRadius: glowRadius,
-                      spreadRadius: 2,
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Spacer(),
-                    PBrandLogo(
-                      height: 64,
-                      width: 90,
-                      isLight: true,
-                    ),
-                    const SizedBox(height: 22),
-                    Text(
-                      'DAILY WORD',
-                      style: PType.eyebrow.copyWith(
-                        color: const Color(0xFFD4AF37),
-                        letterSpacing: 2.2,
-                        fontSize: 10,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Your daily declaration awaits',
-                      textAlign: TextAlign.center,
-                      style: PType.cardTitle.copyWith(
-                        color: PColors.bone,
-                        fontSize: 22,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'An anointed truth for today.\nTap here to unveil.',
-                      textAlign: TextAlign.center,
-                      style: PType.body.copyWith(
-                        color: PColors.bone62,
-                        fontSize: 13,
-                        height: 1.4,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: PColors.glassFill,
-                        borderRadius: BorderRadius.circular(PRadius.chip),
-                        border: Border.all(color: PColors.hairline),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.touch_app_rounded, color: PColors.bone70, size: 14),
-                          const SizedBox(width: 6),
-                          Text(
-                            'TAP TO UNVEIL',
-                            style: PType.meta.copyWith(color: PColors.bone85, fontSize: 10, letterSpacing: 1.2),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Screen 17 — Share modal
+// SCREEN 17 — Share Modal
 // ─────────────────────────────────────────────────────────────────────────────
 class _ShareModal extends StatefulWidget {
   const _ShareModal({required this.item});
@@ -720,7 +956,8 @@ class _ShareModalState extends State<_ShareModal> {
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
-                    child: const Icon(Icons.close_rounded, color: PColors.bone62, size: 22),
+                    child: const Icon(Icons.close_rounded,
+                        color: PColors.bone62, size: 22),
                   ),
                   const Spacer(),
                   Text(
@@ -741,7 +978,7 @@ class _ShareModalState extends State<_ShareModal> {
             ),
             const SizedBox(height: 18),
 
-            // Theme selector
+            // Theme selector chips (Dusk / Ink / Bone / Story 9:16)
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -764,7 +1001,7 @@ class _ShareModalState extends State<_ShareModal> {
                   onTap: (i) => setState(() => _selectedTheme = i),
                 ),
                 _ThemeChip(
-                  label: 'Story',
+                  label: 'Story 9:16',
                   index: 3,
                   selected: _selectedTheme,
                   onTap: (i) => setState(() => _selectedTheme = i),
@@ -773,7 +1010,7 @@ class _ShareModalState extends State<_ShareModal> {
             ),
             const SizedBox(height: 20),
 
-            // Actions
+            // Actions (Copy / Share / Save)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
               child: Row(
@@ -786,29 +1023,37 @@ class _ShareModalState extends State<_ShareModal> {
                       Clipboard.setData(ClipboardData(text: text));
                       Navigator.of(context).pop();
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Copied to clipboard'),
+                        SnackBar(
+                          content: Text(
+                            'Copied to clipboard',
+                            style: PType.body
+                                .copyWith(color: PColors.bone, fontSize: 13),
+                          ),
                           backgroundColor: PColors.ink,
-                          duration: Duration(seconds: 2),
+                          duration: const Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
                         ),
                       );
                     },
-                    child: const _ActionButton(icon: Icons.copy_rounded, label: 'Copy'),
+                    child: const _ActionButton(
+                        icon: Icons.copy_rounded, label: 'Copy'),
                   ),
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
-                    child: const _ActionButton(icon: Icons.ios_share_rounded, label: 'Share'),
+                    child: const _ActionButton(
+                        icon: Icons.ios_share_rounded, label: 'Share'),
                   ),
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
-                    child: const _ActionButton(icon: Icons.download_rounded, label: 'Save'),
+                    child: const _ActionButton(
+                        icon: Icons.download_rounded, label: 'Save'),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 18),
 
-            // Main button
+            // Close button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: PSpace.gutter),
               child: _PrimaryButton(
@@ -834,6 +1079,8 @@ class _ShareCardPreview extends StatelessWidget {
     final Gradient? grad;
     final Color textMain;
     final Color textSub;
+    final double cardWidth = themeIndex == 3 ? 210 : 260;
+    final double cardHeight = themeIndex == 3 ? 350 : 300;
 
     switch (themeIndex) {
       case 1: // Ink
@@ -854,8 +1101,8 @@ class _ShareCardPreview extends StatelessWidget {
     }
 
     return Container(
-      width: 260,
-      height: 300,
+      width: cardWidth,
+      height: cardHeight,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: bg,
@@ -878,12 +1125,12 @@ class _ShareCardPreview extends StatelessWidget {
           const Spacer(),
           Text(
             item.declarationText,
-            style: PType.cardTitle.copyWith(
+            style: PType.scripture.copyWith(
               color: textMain,
               fontSize: 16,
               height: 1.35,
             ),
-            maxLines: 5,
+            maxLines: themeIndex == 3 ? 7 : 5,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 10),
@@ -895,8 +1142,8 @@ class _ShareCardPreview extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 8,
-                height: 8,
+                width: 7,
+                height: 7,
                 decoration: const BoxDecoration(
                   color: Color(0xFFD4AF37),
                   shape: BoxShape.circle,
@@ -937,8 +1184,8 @@ class _ThemeChip extends StatelessWidget {
     return PInteractive(
       onTap: () => onTap(index),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        margin: const EdgeInsets.symmetric(horizontal: 3),
         decoration: BoxDecoration(
           color: isActive ? PColors.glassFill : Colors.transparent,
           borderRadius: BorderRadius.circular(PRadius.chip),
@@ -951,6 +1198,7 @@ class _ThemeChip extends StatelessWidget {
           label,
           style: PType.meta.copyWith(
             color: isActive ? PColors.bone : PColors.bone45,
+            fontSize: 11,
             fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
           ),
         ),
@@ -1013,7 +1261,8 @@ class _ShareIconButton extends StatelessWidget {
             width: 1.0,
           ),
         ),
-        child: const Icon(Icons.ios_share_rounded, color: PColors.bone, size: 20),
+        child:
+            const Icon(Icons.ios_share_rounded, color: PColors.bone, size: 20),
       ),
     );
   }
@@ -1036,7 +1285,8 @@ class _PrimaryButton extends StatelessWidget {
         height: 52,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isEnabled ? PColors.bone : PColors.bone.withValues(alpha: 0.25),
+          color:
+              isEnabled ? PColors.bone : PColors.bone.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(PRadius.pill),
           border: isEnabled ? null : Border.all(color: PColors.hairline),
         ),
@@ -1044,6 +1294,38 @@ class _PrimaryButton extends StatelessWidget {
           label,
           style: PType.uiStrong.copyWith(
             color: isEnabled ? PColors.ink : PColors.bone70,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SecondaryOutlinedButton extends StatelessWidget {
+  const _SecondaryOutlinedButton({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PInteractive(
+      onTap: onTap,
+      pressedScale: 0.985,
+      hoverScale: 1.01,
+      child: Container(
+        width: double.infinity,
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: PColors.glassFill,
+          borderRadius: BorderRadius.circular(PRadius.pill),
+          border: Border.all(color: PColors.hairline),
+        ),
+        child: Text(
+          label,
+          style: PType.uiStrong.copyWith(
+            color: PColors.bone,
             fontSize: 14,
           ),
         ),
