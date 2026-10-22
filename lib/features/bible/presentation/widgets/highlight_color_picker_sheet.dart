@@ -5,12 +5,14 @@ import '../../../../core/ui/molecules/auth_prompt_sheet.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/highlight_color_option.dart';
 import '../../domain/models/chapter.dart';
+import '../../domain/models/verse_popularity.dart';
 import '../providers/bible_provider.dart';
 import 'save_to_collection_sheet.dart';
 import 'share_verse_sheet.dart';
 
-/// Bottom modal sheet / dialog to choose a highlight color for a Bible verse.
-class HighlightColorPickerSheet extends StatelessWidget {
+/// Bottom modal sheet / dialog to choose a highlight color for a Bible verse
+/// and show community popularity feedback ("Subrayado por X personas").
+class HighlightColorPickerSheet extends StatefulWidget {
   const HighlightColorPickerSheet({
     super.key,
     required this.bookId,
@@ -45,10 +47,91 @@ class HighlightColorPickerSheet extends StatelessWidget {
   }
 
   @override
+  State<HighlightColorPickerSheet> createState() => _HighlightColorPickerSheetState();
+}
+
+class _HighlightColorPickerSheetState extends State<HighlightColorPickerSheet> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<BibleProvider>().fetchVersePopularity(
+              widget.bookId,
+              widget.chapter,
+              widget.verse.number,
+            );
+      }
+    });
+  }
+
+  Widget _buildPopularityBadge(VersePopularity? popularity) {
+    if (popularity == null) {
+      return const SizedBox.shrink();
+    }
+
+    final bool hasCount = popularity.count > 0;
+    final bool isPopular = popularity.isPopular;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      decoration: BoxDecoration(
+        color: isPopular
+            ? (popularity.tier >= 2 ? const Color(0xFFFFF9EE) : const Color(0xFFFBF8F2))
+            : PColors.ink06,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isPopular
+              ? (popularity.tier >= 2
+                  ? const Color(0xFFE5A93C).withValues(alpha: 0.6)
+                  : const Color(0xFFD4AF37).withValues(alpha: 0.35))
+              : PColors.ink14,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            popularity.tier >= 2
+                ? Icons.local_fire_department_rounded
+                : (popularity.tier == 1
+                    ? Icons.auto_awesome_rounded
+                    : (hasCount ? Icons.people_outline_rounded : Icons.bookmark_border_rounded)),
+            size: 14,
+            color: isPopular
+                ? (popularity.tier >= 2 ? const Color(0xFFD97706) : const Color(0xFFB58D3D))
+                : PColors.stone,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              popularity.label.isNotEmpty
+                  ? popularity.label
+                  : 'Sé de los primeros en resaltar este versículo',
+              style: PType.meta.copyWith(
+                color: isPopular
+                    ? (popularity.tier >= 2 ? const Color(0xFF92400E) : const Color(0xFF785B1B))
+                    : PColors.stone,
+                fontSize: 11.5,
+                fontWeight: isPopular ? FontWeight.w600 : FontWeight.w500,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = context.watch<BibleProvider>();
-    final isHighlighted = provider.isVerseHighlighted(bookId, chapter, verse.number);
-    final currentColorHex = provider.getVerseHighlightColor(bookId, chapter, verse.number);
+    final isHighlighted = provider.isVerseHighlighted(widget.bookId, widget.chapter, widget.verse.number);
+    final currentColorHex = provider.getVerseHighlightColor(widget.bookId, widget.chapter, widget.verse.number);
+    final popularity = provider.getVersePopularity(widget.bookId, widget.chapter, widget.verse.number);
 
     return Container(
       padding: EdgeInsets.only(
@@ -95,7 +178,7 @@ class HighlightColorPickerSheet extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$bookName $chapter:${verse.number}',
+                        '${widget.bookName} ${widget.chapter}:${widget.verse.number}',
                         style: PType.rowTitle.copyWith(
                           fontSize: 18,
                           color: PColors.ink,
@@ -104,7 +187,7 @@ class HighlightColorPickerSheet extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        verse.text,
+                        widget.verse.text,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: PType.body.copyWith(
@@ -113,6 +196,7 @@ class HighlightColorPickerSheet extends StatelessWidget {
                           height: 1.35,
                         ),
                       ),
+                      _buildPopularityBadge(popularity),
                     ],
                   ),
                 ),
@@ -121,10 +205,10 @@ class HighlightColorPickerSheet extends StatelessWidget {
                     Navigator.of(context).pop();
                     ShareVerseSheet.show(
                       context,
-                      bookName: bookName,
-                      chapter: chapter,
-                      verseNumber: verse.number,
-                      verseText: verse.text,
+                      bookName: widget.bookName,
+                      chapter: widget.chapter,
+                      verseNumber: widget.verse.number,
+                      verseText: widget.verse.text,
                     );
                   },
                   icon: const Icon(Icons.ios_share_rounded, color: PColors.ink, size: 20),
@@ -139,14 +223,14 @@ class HighlightColorPickerSheet extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
 
             // Title for color swatches
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'HIGHLIGHT COLOR',
+                  'COLOR DE SUBRAYADO',
                   style: PType.eyebrow.copyWith(
                     color: PColors.stone,
                     fontSize: 11,
@@ -157,13 +241,13 @@ class HighlightColorPickerSheet extends StatelessWidget {
                   GestureDetector(
                     onTap: () async {
                       Navigator.of(context).pop();
-                      await provider.removeVerseHighlight(bookId, chapter, verse.number);
+                      await provider.removeVerseHighlight(widget.bookId, widget.chapter, widget.verse.number);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).hideCurrentSnackBar();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              '$bookName $chapter:${verse.number} highlight removed',
+                              '${widget.bookName} ${widget.chapter}:${widget.verse.number} subrayado removido',
                             ),
                             duration: const Duration(seconds: 2),
                             behavior: SnackBarBehavior.floating,
@@ -180,7 +264,7 @@ class HighlightColorPickerSheet extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Remove',
+                          'Quitar',
                           style: PType.meta.copyWith(
                             color: const Color(0xFFEF4444),
                             fontWeight: FontWeight.w600,
@@ -212,20 +296,20 @@ class HighlightColorPickerSheet extends StatelessWidget {
                         isLoginOnly: false,
                         onSuccess: () async {
                           final isNowHighlighted = await provider.setVerseHighlight(
-                            bookId,
-                            chapter,
-                            verse.number,
+                            widget.bookId,
+                            widget.chapter,
+                            widget.verse.number,
                             colorHex: opt.hex,
-                            verseText: verse.text,
+                            verseText: widget.verse.text,
                           );
 
                           if (context.mounted && isNowHighlighted) {
                             SaveToCollectionSheet.show(
                               context,
-                              bookId: bookId,
-                              bookName: bookName,
-                              chapter: chapter,
-                              verse: verse,
+                              bookId: widget.bookId,
+                              bookName: widget.bookName,
+                              chapter: widget.chapter,
+                              verse: widget.verse,
                               colorHex: opt.hex,
                             );
                           }
@@ -237,28 +321,64 @@ class HighlightColorPickerSheet extends StatelessWidget {
                     Navigator.of(context).pop();
 
                     final isNowHighlighted = await provider.setVerseHighlight(
-                      bookId,
-                      chapter,
-                      verse.number,
+                      widget.bookId,
+                      widget.chapter,
+                      widget.verse.number,
                       colorHex: opt.hex,
-                      verseText: verse.text,
+                      verseText: widget.verse.text,
                     );
 
                     if (context.mounted) {
                       if (isNowHighlighted) {
+                        // If it's a popular verse, show motivational feedback
+                        final updatedPop = provider.getVersePopularity(
+                          widget.bookId,
+                          widget.chapter,
+                          widget.verse.number,
+                        );
+
+                        if (updatedPop != null && updatedPop.isPopular) {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(
+                                    updatedPop.tier >= 2
+                                        ? Icons.local_fire_department_rounded
+                                        : Icons.auto_awesome_rounded,
+                                    color: const Color(0xFFF59E0B),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '¡Te uniste a ${updatedPop.count} personas que destacaron este versículo!',
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              duration: const Duration(seconds: 3),
+                              behavior: SnackBarBehavior.floating,
+                              backgroundColor: const Color(0xFF1E293B),
+                            ),
+                          );
+                        }
+
                         SaveToCollectionSheet.show(
                           context,
-                          bookId: bookId,
-                          bookName: bookName,
-                          chapter: chapter,
-                          verse: verse,
+                          bookId: widget.bookId,
+                          bookName: widget.bookName,
+                          chapter: widget.chapter,
+                          verse: widget.verse,
                           colorHex: opt.hex,
                         );
                       } else {
                         ScaffoldMessenger.of(context).hideCurrentSnackBar();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('$bookName $chapter:${verse.number} highlight removed'),
+                            content: Text('${widget.bookName} ${widget.chapter}:${widget.verse.number} subrayado removido'),
                             duration: const Duration(seconds: 2),
                             behavior: SnackBarBehavior.floating,
                           ),
@@ -324,10 +444,10 @@ class HighlightColorPickerSheet extends StatelessWidget {
                   Navigator.of(context).pop();
                   SaveToCollectionSheet.show(
                     context,
-                    bookId: bookId,
-                    bookName: bookName,
-                    chapter: chapter,
-                    verse: verse,
+                    bookId: widget.bookId,
+                    bookName: widget.bookName,
+                    chapter: widget.chapter,
+                    verse: widget.verse,
                     colorHex: currentColorHex,
                   );
                 },

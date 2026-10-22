@@ -6,6 +6,7 @@ import '../../domain/models/bible_version.dart';
 import '../../domain/models/book.dart';
 import '../../domain/models/chapter.dart';
 import '../../domain/models/verse_collection.dart';
+import '../../domain/models/verse_popularity.dart';
 import '../../domain/ports/bible_repository.dart';
 
 class BibleApiAdapter implements BibleRepository {
@@ -146,6 +147,54 @@ class BibleApiAdapter implements BibleRepository {
     } catch (_) {
       // Return true when offline so local optimistic highlight is preserved
       return true;
+    }
+  }
+
+  @override
+  Future<Map<int, VersePopularity>> getChapterPopularity({
+    required String bookId,
+    required int chapter,
+  }) async {
+    try {
+      final res = await httpClient.get(
+        '/bible/stats/${bookId.toLowerCase()}/$chapter',
+        parser: (json) => json,
+      );
+      if (res is Map) {
+        final result = <int, VersePopularity>{};
+        res.forEach((key, value) {
+          final verseNum = int.tryParse(key.toString());
+          if (verseNum != null && value is Map) {
+            result[verseNum] = VersePopularity.fromJson(
+              Map<String, dynamic>.from(value),
+            );
+          }
+        });
+        return result;
+      }
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  @override
+  Future<VersePopularity> getVersePopularity({
+    required String bookId,
+    required int chapter,
+    required int verseNumber,
+  }) async {
+    try {
+      final res = await httpClient.get(
+        '/bible/stats/${bookId.toLowerCase()}/$chapter/$verseNumber',
+        parser: (json) => json,
+      );
+      if (res is Map) {
+        return VersePopularity.fromJson(Map<String, dynamic>.from(res));
+      }
+      return VersePopularity.empty;
+    } catch (_) {
+      return VersePopularity.empty;
     }
   }
 

@@ -3,6 +3,7 @@ import '../models/bible_version.dart';
 import '../models/book.dart';
 import '../models/chapter.dart';
 import '../models/verse_collection.dart';
+import '../models/verse_popularity.dart';
 
 abstract class BibleRepository {
   Future<List<BibleVersion>> getVersions();
@@ -16,6 +17,15 @@ abstract class BibleRepository {
     required String verseText,
     String? version,
     String? colorHex,
+  });
+  Future<Map<int, VersePopularity>> getChapterPopularity({
+    required String bookId,
+    required int chapter,
+  });
+  Future<VersePopularity> getVersePopularity({
+    required String bookId,
+    required int chapter,
+    required int verseNumber,
   });
 
   // Verse Collections

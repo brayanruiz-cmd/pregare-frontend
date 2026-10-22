@@ -5,6 +5,7 @@ import '../../domain/models/bible_version.dart';
 import '../../domain/models/book.dart';
 import '../../domain/models/chapter.dart';
 import '../../domain/models/verse_collection.dart';
+import '../../domain/models/verse_popularity.dart';
 import '../../domain/ports/bible_repository.dart';
 import '../../application/usecases/get_versions_use_case.dart';
 import '../../application/usecases/get_books_use_case.dart';
@@ -99,7 +100,53 @@ class BibleProvider extends ChangeNotifier {
     _highlightedVerses.clear();
     _highlightsMap.clear();
     _collections = [];
+    _versePopularityMap.clear();
     notifyListeners();
+  }
+
+  // ── Community Verse Popularity ──────────────────────────────────────────
+  final Map<String, VersePopularity> _versePopularityMap = {};
+  Map<String, VersePopularity> get versePopularityMap => _versePopularityMap;
+
+  VersePopularity? getVersePopularity(String bookId, int chapter, int verseNum) {
+    return _versePopularityMap['${bookId.toLowerCase()}:$chapter:$verseNum'];
+  }
+
+  Future<VersePopularity> fetchVersePopularity(
+    String bookId,
+    int chapter,
+    int verseNum,
+  ) async {
+    final key = '${bookId.toLowerCase()}:$chapter:$verseNum';
+    if (_versePopularityMap.containsKey(key)) {
+      return _versePopularityMap[key]!;
+    }
+    try {
+      final pop = await _repository.getVersePopularity(
+        bookId: bookId,
+        chapter: chapter,
+        verseNumber: verseNum,
+      );
+      _versePopularityMap[key] = pop;
+      notifyListeners();
+      return pop;
+    } catch (_) {
+      return VersePopularity.empty;
+    }
+  }
+
+  Future<void> _loadChapterPopularity(String bookId, int chapterNum) async {
+    try {
+      final stats = await _repository.getChapterPopularity(
+        bookId: bookId,
+        chapter: chapterNum,
+      );
+      for (final entry in stats.entries) {
+        _versePopularityMap['${bookId.toLowerCase()}:$chapterNum:${entry.key}'] =
+            entry.value;
+      }
+      notifyListeners();
+    } catch (_) {}
   }
 
   // ── Verse Collections ──────────────────────────────────────────────────
@@ -235,6 +282,23 @@ class BibleProvider extends ChangeNotifier {
           h.verseNumber == verseNum,
     );
     _highlights.insert(0, newHighlight);
+
+    // Optimistically increment community popularity
+    final currentPop = _versePopularityMap[key];
+    final currentCount = currentPop?.count ?? 0;
+    final nextCount = currentCount + 1;
+    _versePopularityMap[key] = VersePopularity(
+      count: nextCount,
+      tier: nextCount >= 100 ? 3 : (nextCount >= 20 ? 2 : (nextCount >= 5 ? 1 : 0)),
+      label: nextCount >= 100
+          ? '⭐ Versículo destacado en la comunidad ($nextCount+ personas)'
+          : (nextCount >= 20
+              ? '🔥 Versículo muy querido ($nextCount personas)'
+              : (nextCount >= 5
+                  ? '✨ Subrayado por $nextCount personas'
+                  : '$nextCount ${nextCount == 1 ? "persona ha" : "personas han"} subrayado esto')),
+      isPopular: nextCount >= 5,
+    );
     notifyListeners();
 
     try {
@@ -257,6 +321,19 @@ class BibleProvider extends ChangeNotifier {
         );
         notifyListeners();
       }
+
+      // Reconcile exact stat from server in background
+      _repository
+          .getVersePopularity(
+            bookId: bookId,
+            chapter: chapter,
+            verseNumber: verseNum,
+          )
+          .then((refreshed) {
+        _versePopularityMap[key] = refreshed;
+        notifyListeners();
+      }).catchError((_) {});
+
       return isNowHighlighted;
     } catch (_) {
       if (existing != null) {
@@ -291,6 +368,26 @@ class BibleProvider extends ChangeNotifier {
           h.chapter == chapter &&
           h.verseNumber == verseNum,
     );
+
+    // Optimistically decrement community popularity
+    final currentPop = _versePopularityMap[key];
+    if (currentPop != null && currentPop.count > 0) {
+      final nextCount = currentPop.count - 1;
+      _versePopularityMap[key] = VersePopularity(
+        count: nextCount,
+        tier: nextCount >= 100 ? 3 : (nextCount >= 20 ? 2 : (nextCount >= 5 ? 1 : 0)),
+        label: nextCount >= 5
+            ? (nextCount >= 100
+                ? '⭐ Versículo destacado en la comunidad ($nextCount+ personas)'
+                : (nextCount >= 20
+                    ? '🔥 Versículo muy querido ($nextCount personas)'
+                    : '✨ Subrayado por $nextCount personas'))
+            : (nextCount > 0
+                ? '$nextCount personas han subrayado esto'
+                : 'Sé de los primeros en resaltar este versículo'),
+        isPopular: nextCount >= 5,
+      );
+    }
     notifyListeners();
 
     try {
@@ -302,6 +399,18 @@ class BibleProvider extends ChangeNotifier {
         version: _selectedVersion,
         colorHex: existing?.colorHex,
       );
+
+      _repository
+          .getVersePopularity(
+            bookId: bookId,
+            chapter: chapter,
+            verseNumber: verseNum,
+          )
+          .then((refreshed) {
+        _versePopularityMap[key] = refreshed;
+        notifyListeners();
+      }).catchError((_) {});
+
       return false;
     } catch (_) {
       return false;
@@ -380,6 +489,9 @@ class BibleProvider extends ChangeNotifier {
   Future<void> loadChapter(String bookId, int chapterNum) async {
     _selectedBook = bookId;
     _selectedChapter = chapterNum;
+
+    // Load community popularity stats in background (non-blocking)
+    _loadChapterPopularity(bookId, chapterNum);
 
     // Serve instantly from cache if available — avoids hitting the network
     final cacheKey = '$_selectedVersion:${bookId.toLowerCase()}:$chapterNum';
