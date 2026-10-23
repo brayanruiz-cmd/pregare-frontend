@@ -258,20 +258,18 @@ class ProfileScreen extends StatelessWidget {
     if (confirmed == true && context.mounted) {
       final messenger = ScaffoldMessenger.of(context);
       await context.read<AuthProvider>().logout();
-      if (context.mounted) {
-        context.read<StreaksProvider>().reset();
-        context.read<BibleProvider>().clearHighlights();
-        await context.read<OnboardingProvider>().clearUserData();
-      }
-      if (context.mounted) {
-        MainShell.reloadAll(context);
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('Logged out successfully'),
-            backgroundColor: PColors.ink,
-          ),
-        );
-      }
+      if (!context.mounted) return;
+      context.read<StreaksProvider>().reset();
+      context.read<BibleProvider>().clearHighlights();
+      await context.read<OnboardingProvider>().clearUserData();
+      if (!context.mounted) return;
+      MainShell.reloadAll(context);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Logged out successfully'),
+          backgroundColor: PColors.ink,
+        ),
+      );
     }
   }
 }

@@ -81,10 +81,27 @@ class DeclarationProvider extends ChangeNotifier {
       _cachedTodayByGender[_selectedGender] = item;
       _todayDeclaration = item;
       _todayState = AsyncData(item);
+
+      // Pre-fetch opposite gender in background so both cards are immediately ready
+      final otherGender = _selectedGender == 'mujeres' ? 'hombres' : 'mujeres';
+      if (!_cachedTodayByGender.containsKey(otherGender)) {
+        _getToday.execute(gender: otherGender).then((otherItem) {
+          _cachedTodayByGender[otherGender] = otherItem;
+        }).catchError((_) {});
+      }
     } catch (e) {
       _todayState = AsyncError(e.toString());
     }
     notifyListeners();
+  }
+
+  Declaration? declarationForGender(String gender) {
+    final norm = (gender.toLowerCase().startsWith('h') ||
+            gender.toLowerCase().contains('men') ||
+            gender.toLowerCase() == 'male')
+        ? 'hombres'
+        : 'mujeres';
+    return _cachedTodayByGender[norm];
   }
 
   // ── Filtering & Legacy loaders ───────────────────────────────────────────

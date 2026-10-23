@@ -7,11 +7,15 @@ import '../../domain/ports/streaks_repository.dart';
 import '../../domain/models/user_badge_model.dart';
 
 class StreaksProvider extends ChangeNotifier {
-  StreaksProvider({required StreaksRepository repository})
-      // ignore: prefer_initializing_formals
-      : _repository = repository {
-    loadStreak();
-    loadBadges();
+  StreaksProvider({
+    required StreaksRepository repository,
+    bool autoload = true,
+    // ignore: prefer_initializing_formals
+  }) : _repository = repository {
+    if (autoload) {
+      loadStreak();
+      loadBadges();
+    }
   }
 
   final StreaksRepository _repository;
@@ -108,11 +112,24 @@ class StreaksProvider extends ChangeNotifier {
   List<String> _proclaimedDeclarationIds = [];
   List<String> get proclaimedDeclarationIds => _proclaimedDeclarationIds;
 
+  List<String> _todayProclaimedGenders = [];
+  List<String> get todayProclaimedGenders => _todayProclaimedGenders;
+
   Future<void> loadProclaimedDeclarations() async {
     try {
-      _proclaimedDeclarationIds = await _repository.getProclaimedDeclarations();
+      final results = await Future.wait([
+        _repository.getProclaimedDeclarations(),
+        _repository.getTodayProclaimedGenders(),
+      ]);
+      _proclaimedDeclarationIds = results[0];
+      _todayProclaimedGenders = results[1];
       notifyListeners();
-    } catch (_) {}
+    } catch (_) {
+      try {
+        _proclaimedDeclarationIds = await _repository.getProclaimedDeclarations();
+        notifyListeners();
+      } catch (_) {}
+    }
   }
 
   Future<bool> completeDevotional(String devotionalId) async {
@@ -129,12 +146,21 @@ class StreaksProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> proclaimDeclaration(String declarationId) async {
+  Future<bool> proclaimDeclaration(String declarationId, {String? gender}) async {
     try {
-      final ok = await _repository.proclaimDeclaration(declarationId);
+      final ok = await _repository.proclaimDeclaration(declarationId, gender: gender);
       if (ok) {
         if (!_proclaimedDeclarationIds.contains(declarationId)) {
           _proclaimedDeclarationIds.add(declarationId);
+        }
+        if (gender != null && gender.isNotEmpty) {
+          final norm = (gender.toLowerCase().startsWith('h') ||
+                  gender.toLowerCase().contains('men'))
+              ? 'hombres'
+              : 'mujeres';
+          if (!_todayProclaimedGenders.contains(norm)) {
+            _todayProclaimedGenders.add(norm);
+          }
         }
         await loadStreak();
         await loadBadges();

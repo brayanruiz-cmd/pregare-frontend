@@ -5,8 +5,17 @@ import '../../domain/models/auth_session.dart';
 import '../../domain/ports/auth_repository.dart';
 
 class AuthProvider extends ChangeNotifier {
-  AuthProvider({required AuthRepository repository}) : _repository = repository {
-    restoreSession();
+  AuthProvider({
+    required AuthRepository repository,
+    AuthSession? initialSession,
+    // ignore: prefer_initializing_formals
+  })  : _repository = repository,
+        _session = initialSession != null
+            ? AsyncData(initialSession)
+            : const AsyncInitial() {
+    if (initialSession == null) {
+      restoreSession();
+    }
   }
 
   final AuthRepository _repository;

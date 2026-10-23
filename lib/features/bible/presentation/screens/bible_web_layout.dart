@@ -357,7 +357,7 @@ class _BibleChapterReader extends StatelessWidget {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(PRadius.tile),
                     border: isHighlighted
-                        ? Border(left: BorderSide(color: colorOption.accent, width: 3.5))
+                        ? Border.all(color: colorOption.accent, width: 1.5)
                         : null,
                   ),
                   child: Row(

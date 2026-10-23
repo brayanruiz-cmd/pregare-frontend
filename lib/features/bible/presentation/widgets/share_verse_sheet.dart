@@ -1,9 +1,7 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../../core/theme/tokens.dart';
 
@@ -59,23 +57,29 @@ class _ShareVerseSheetState extends State<ShareVerseSheet> {
   Future<void> _shareImage() async {
     setState(() => _isGenerating = true);
     try {
-      final boundary = _boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      final boundary = _boundaryKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
       if (boundary == null) return;
 
-      // Capture at 3.0 pixel ratio for high-resolution retina export
+      // Capture at 3× pixel ratio for high-resolution retina export
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
 
       final pngBytes = byteData.buffer.asUint8List();
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/pregare_verse_${DateTime.now().millisecondsSinceEpoch}.png');
-      await file.writeAsBytes(pngBytes);
+      final shareText =
+          '«${widget.verseText}»\n— ${widget.bookName} ${widget.chapter}:${widget.verseNumber} (${widget.version})\n\nLeído en Pregare App';
 
-      final shareText = '«${widget.verseText}»\n— ${widget.bookName} ${widget.chapter}:${widget.verseNumber} (${widget.version})\n\nLeído en Pregare App';
-
+      // XFile.fromData works on Web, iOS, Android and Desktop —
+      // no dart:io / path_provider required.
       await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'image/png')],
+        [
+          XFile.fromData(
+            pngBytes,
+            name: 'pregare_verse.png',
+            mimeType: 'image/png',
+          ),
+        ],
         text: shareText,
         subject: '${widget.bookName} ${widget.chapter}:${widget.verseNumber}',
       );
@@ -83,7 +87,7 @@ class _ShareVerseSheetState extends State<ShareVerseSheet> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al preparar imagen: $e'),
+            content: Text('Error al compartir: $e'),
             behavior: SnackBarBehavior.floating,
           ),
         );

@@ -37,12 +37,22 @@ class _MainShellState extends State<MainShell> {
   String? _lastSessionId;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _reloadAllData();
+      }
+    });
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final auth = context.watch<AuthProvider>();
     final currentSessionId =
-        auth.isAuthenticated ? auth.currentSession?.user.id : 'guest';
-    if (_lastSessionId != null && _lastSessionId != currentSessionId) {
+        auth.isAuthenticated ? auth.currentSession?.user.id : null;
+    if (_lastSessionId != null && _lastSessionId != currentSessionId && currentSessionId != null) {
       _lastSessionId = currentSessionId;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -70,19 +80,19 @@ class _MainShellState extends State<MainShell> {
       context.read<DevotionalsProvider>().loadDevotionals();
     } else if (index == 4) {
       context.read<StreaksProvider>().loadStreak();
+      context.read<StreaksProvider>().loadBadges();
     }
   }
 
   void _reloadAllData() {
     context.read<HomeProvider>().loadHomeData();
     context.read<StreaksProvider>().loadStreak();
+    context.read<StreaksProvider>().loadBadges();
     context.read<TopicsProvider>().loadTopics();
     context.read<DevotionalsProvider>().loadDevotionals();
     context.read<BibleProvider>().loadHighlights();
     context.read<DeclarationProvider>().loadDeclarations();
-    setState(() {
-      _currentIndex = 0;
-    });
+    context.read<DeclarationProvider>().loadTodayDeclaration();
   }
 
   // Pantallas donde el nav flotante se muestra (Home, Bible library, Explore, You)

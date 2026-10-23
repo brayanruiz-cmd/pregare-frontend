@@ -25,6 +25,7 @@ class PFlipCard extends StatefulWidget {
     this.backPrompt = 'Tap to return to Scripture',
     this.onFlipChanged,
     this.height = 530.0,
+    this.initialFlipped = false,
   });
 
   final String scriptureText;
@@ -37,6 +38,7 @@ class PFlipCard extends StatefulWidget {
   final String backPrompt;
   final ValueChanged<bool>? onFlipChanged;
   final double height;
+  final bool initialFlipped;
 
   @override
   State<PFlipCard> createState() => _PFlipCardState();
@@ -46,15 +48,17 @@ class _PFlipCardState extends State<PFlipCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _animation;
-  bool _isFront = true;
+  late bool _isFront;
   bool _isHovered = false;
 
   @override
   void initState() {
     super.initState();
+    _isFront = !widget.initialFlipped;
     _controller = AnimationController(
       vsync: this,
       duration: PMotion.flipDuration,
+      value: widget.initialFlipped ? 1.0 : 0.0,
     );
 
     _animation = Tween<double>(begin: 0.0, end: pi).animate(

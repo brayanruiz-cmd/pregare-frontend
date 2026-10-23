@@ -12,6 +12,18 @@ import 'share_verse_sheet.dart';
 
 /// Bottom modal sheet / dialog to choose a highlight color for a Bible verse
 /// and show community popularity feedback ("Subrayado por X personas").
+class _HighlightResult {
+  final String? colorHex;
+  final bool shouldOpenCollections;
+  final bool removed;
+
+  const _HighlightResult({
+    this.colorHex,
+    this.shouldOpenCollections = false,
+    this.removed = false,
+  });
+}
+
 class HighlightColorPickerSheet extends StatefulWidget {
   const HighlightColorPickerSheet({
     super.key,
@@ -32,8 +44,8 @@ class HighlightColorPickerSheet extends StatefulWidget {
     required String bookName,
     required int chapter,
     required Verse verse,
-  }) {
-    return showModalBottomSheet(
+  }) async {
+    final result = await showModalBottomSheet<_HighlightResult>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -44,6 +56,33 @@ class HighlightColorPickerSheet extends StatefulWidget {
         verse: verse,
       ),
     );
+
+    if (!context.mounted || result == null) return;
+
+    if (result.removed) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$bookName $chapter:${verse.number} subrayado removido',
+          ),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (result.shouldOpenCollections) {
+      SaveToCollectionSheet.show(
+        context,
+        bookId: bookId,
+        bookName: bookName,
+        chapter: chapter,
+        verse: verse,
+        colorHex: result.colorHex,
+      );
+    }
   }
 
   @override
@@ -240,19 +279,9 @@ class _HighlightColorPickerSheetState extends State<HighlightColorPickerSheet> {
                 if (isHighlighted)
                   GestureDetector(
                     onTap: () async {
-                      Navigator.of(context).pop();
                       await provider.removeVerseHighlight(widget.bookId, widget.chapter, widget.verse.number);
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '${widget.bookName} ${widget.chapter}:${widget.verse.number} subrayado removido',
-                            ),
-                            duration: const Duration(seconds: 2),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        Navigator.of(context).pop(const _HighlightResult(removed: true));
                       }
                     },
                     child: Row(
@@ -318,8 +347,6 @@ class _HighlightColorPickerSheetState extends State<HighlightColorPickerSheet> {
                       return;
                     }
 
-                    Navigator.of(context).pop();
-
                     final isNowHighlighted = await provider.setVerseHighlight(
                       widget.bookId,
                       widget.chapter,
@@ -366,23 +393,14 @@ class _HighlightColorPickerSheetState extends State<HighlightColorPickerSheet> {
                           );
                         }
 
-                        SaveToCollectionSheet.show(
-                          context,
-                          bookId: widget.bookId,
-                          bookName: widget.bookName,
-                          chapter: widget.chapter,
-                          verse: widget.verse,
-                          colorHex: opt.hex,
-                        );
-                      } else {
-                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${widget.bookName} ${widget.chapter}:${widget.verse.number} subrayado removido'),
-                            duration: const Duration(seconds: 2),
-                            behavior: SnackBarBehavior.floating,
+                        Navigator.of(context).pop(
+                          _HighlightResult(
+                            colorHex: opt.hex,
+                            shouldOpenCollections: true,
                           ),
                         );
+                      } else {
+                        Navigator.of(context).pop(const _HighlightResult(removed: true));
                       }
                     }
                   },
@@ -441,14 +459,11 @@ class _HighlightColorPickerSheetState extends State<HighlightColorPickerSheet> {
               const SizedBox(height: 18),
               GestureDetector(
                 onTap: () {
-                  Navigator.of(context).pop();
-                  SaveToCollectionSheet.show(
-                    context,
-                    bookId: widget.bookId,
-                    bookName: widget.bookName,
-                    chapter: widget.chapter,
-                    verse: widget.verse,
-                    colorHex: currentColorHex,
+                  Navigator.of(context).pop(
+                    _HighlightResult(
+                      colorHex: currentColorHex,
+                      shouldOpenCollections: true,
+                    ),
                   );
                 },
                 child: Container(

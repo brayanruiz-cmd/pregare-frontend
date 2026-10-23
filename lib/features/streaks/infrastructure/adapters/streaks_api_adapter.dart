@@ -54,8 +54,15 @@ class StreaksApiAdapter implements StreaksRepository {
   }
 
   @override
-  Future<bool> proclaimDeclaration(String declarationId) async {
-    final res = await httpClient.post('/streaks/declarations/$declarationId/proclaim', data: {});
+  Future<bool> proclaimDeclaration(String declarationId, {String? gender}) async {
+    final body = <String, dynamic>{};
+    if (gender != null && gender.isNotEmpty) {
+      body['gender'] = gender;
+    }
+    final res = await httpClient.post(
+      '/streaks/declarations/$declarationId/proclaim',
+      data: body,
+    );
     return res != null;
   }
 
@@ -65,6 +72,17 @@ class StreaksApiAdapter implements StreaksRepository {
       final res = await httpClient.get('/streaks/declarations/proclaimed');
       if (res is List) {
         return res.map((e) => e.toString()).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  @override
+  Future<List<String>> getTodayProclaimedGenders() async {
+    try {
+      final res = await httpClient.get('/streaks/declarations/today-genders');
+      if (res is List) {
+        return res.map((e) => e.toString().toLowerCase()).toList();
       }
     } catch (_) {}
     return [];

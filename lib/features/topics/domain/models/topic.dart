@@ -30,20 +30,32 @@ class Topic {
   final int videoDurationMinutes;
 
   factory Topic.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'];
+    final rawUuid = json['uuid'] as String? ?? (rawId is String ? rawId : null);
+    final intId = rawId is int
+        ? rawId
+        : int.tryParse(rawId?.toString() ?? '') ?? 1;
+
+    List<String> tips = [];
+    if (json['supportTips'] != null) {
+      tips = List<String>.from(json['supportTips'] as List);
+    } else if (json['practices'] != null) {
+      tips = (json['practices'] as List)
+          .map((p) => p['instructionText']?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+
     return Topic(
-      id: json['id'] is int
-          ? json['id'] as int
-          : int.tryParse(json['id']?.toString() ?? '') ?? 1,
-      uuid: json['uuid'] as String?,
+      id: intId,
+      uuid: rawUuid,
       tag: json['tag'] as String? ?? '',
       title: json['title'] as String? ?? '',
       subtitle: json['subtitle'] as String?,
       description: json['description'] as String? ?? '',
       scriptureQuote: json['scriptureQuote'] as String?,
       scriptureReference: json['scriptureReference'] as String?,
-      supportTips: json['supportTips'] != null
-          ? List<String>.from(json['supportTips'] as List)
-          : [],
+      supportTips: tips,
       youtubeQuery: json['youtubeQuery'] as String? ?? '',
       youtubeUrl: json['youtubeUrl'] as String?,
       youtubeVideoId: json['youtubeVideoId'] as String?,

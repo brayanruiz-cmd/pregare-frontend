@@ -73,19 +73,28 @@ class Devotional {
   }
 
   factory Devotional.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'];
+    final rawUuid = json['uuid'] as String? ?? (rawId is String ? rawId : null);
+    final dayNum = json['day'] as int? ??
+        (json['day_number'] as int? ??
+            (json['dayNumber'] as int? ??
+                int.tryParse(rawId?.toString() ?? '') ?? 1));
+
+    final rawVerse = json['verse'] as String? ?? (json['verseText'] as String? ?? '');
+    final rawText = json['text'] as String? ?? (json['reflectionText'] as String? ?? '');
+    final rawPrayer = json['prayer'] as String? ?? (json['prayerText'] as String? ?? '');
+    final rawVerseRef = (json['verseReference'] ?? json['verse_reference']) as String?;
+
     return Devotional(
-      id: json['id'] is int
-          ? json['id'] as int
-          : int.tryParse(json['id']?.toString() ?? '') ??
-              (json['day'] as int? ?? 1),
-      day: json['day'] as int? ?? (json['day_number'] as int? ?? 1),
+      id: dayNum,
+      day: dayNum,
       title: json['title'] as String? ?? '',
-      verse: json['verse'] as String? ?? '',
-      text: json['text'] as String? ?? '',
-      prayer: json['prayer'] as String? ?? '',
-      uuid: json['uuid'] as String?,
+      verse: rawVerse,
+      text: rawText,
+      prayer: rawPrayer,
+      uuid: rawUuid,
       durationMinutes: json['durationMinutes'] as int? ?? 3,
-      verseReference: (json['verseReference'] ?? json['verse_reference']) as String?,
+      verseReference: rawVerseRef,
       isCompleted: (json['isCompleted'] ?? json['is_completed']) as bool? ?? false,
     );
   }

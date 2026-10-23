@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/infrastructure/http/http_client.dart';
+import '../../../../core/infrastructure/offline/offline_manager.dart';
 import '../../domain/models/auth_session.dart';
 import '../../domain/models/user.dart';
 import '../../domain/ports/auth_repository.dart';
@@ -108,6 +109,7 @@ class AuthApiAdapter implements AuthRepository {
         await prefs.remove(_tokenKey);
         await prefs.remove(_refreshTokenKey);
         await prefs.remove(_userKey);
+        await OfflineManager.instance.clear();
       } catch (_) {}
     }
   }

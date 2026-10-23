@@ -15,8 +15,7 @@ import '../providers/declaration_provider.dart';
 // ─── Flow 04 States (Screens 14, 15/16, 18) ──────────────────────────────────
 enum _DeclarationFlowState {
   intro, // Screen 14: Daily introduction
-  flip, // Screen 15 & 16: Declaration card with 3D Flip
-  completed, // Screen 18: Completed 4/4
+  flip, // Screen 15: Declaration card with 3D Flip
 }
 
 // ─── Local item model for UI & Sharing ───────────────────────────────────────
@@ -50,21 +49,53 @@ class DeclarationsScreen extends StatefulWidget {
 
 class _DeclarationsScreenState extends State<DeclarationsScreen> {
   _DeclarationFlowState _flowState = _DeclarationFlowState.intro;
-  int _cardIndex = 0;
 
   // Track proclaimed status per gender so switching genders preserves both!
   final Set<String> _proclaimedGenders = {};
+
+  bool _isGenderProclaimed(String gender) {
+    final normGender = (gender.toLowerCase().startsWith('h') ||
+            gender.toLowerCase().contains('men'))
+        ? 'hombres'
+        : 'mujeres';
+
+    if (_proclaimedGenders.contains(normGender)) return true;
+
+    final streaks = context.read<StreaksProvider>();
+    if (streaks.todayProclaimedGenders.contains(normGender)) return true;
+
+    final provider = context.read<DeclarationProvider>();
+    final decl = provider.declarationForGender(normGender) ??
+        (provider.selectedGender == normGender ? provider.todayDeclaration : null);
+
+    if (decl != null) {
+      if (streaks.proclaimedDeclarationIds.contains(decl.id.toString())) {
+        return true;
+      }
+      if (decl.dayNumber != null) {
+        if (streaks.proclaimedDeclarationIds.contains('${decl.gender}_${decl.dayNumber}') ||
+            streaks.proclaimedDeclarationIds.contains('${decl.gender}_day_${decl.dayNumber}')) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _hasAnyProclaimedToday() {
+    return _isGenderProclaimed('mujeres') || _isGenderProclaimed('hombres');
+  }
 
   @override
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = context.read<AuthProvider>();
       final provider = context.read<DeclarationProvider>();
       final streaks = context.read<StreaksProvider>();
 
-      streaks.loadProclaimedDeclarations();
+      await streaks.loadProclaimedDeclarations();
 
       String targetGender = provider.selectedGender;
       final userGender = auth.currentSession?.user.gender;
@@ -78,32 +109,20 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
         }
       }
 
-      provider.loadTodayDeclaration(gender: targetGender);
-      provider.loadDeclarations();
+      await provider.loadTodayDeclaration(gender: targetGender);
 
-      // Check if already proclaimed today
+      // Si ya proclamó hoy (o cualquiera de los géneros), ir directo a las tarjetas sin intro
       _checkProclaimedStatus(targetGender);
     });
   }
 
   void _checkProclaimedStatus(String gender) {
-    final streaks = context.read<StreaksProvider>();
-    final provider = context.read<DeclarationProvider>();
-    final decl = provider.todayDeclaration;
-
-    final isAlreadyProclaimed = (decl != null &&
-            (streaks.proclaimedDeclarationIds.contains(decl.id.toString()) ||
-                (decl.dayNumber != null &&
-                    (streaks.proclaimedDeclarationIds
-                            .contains('${decl.gender}_${decl.dayNumber}') ||
-                        streaks.proclaimedDeclarationIds.contains(
-                            '${decl.gender}_day_${decl.dayNumber}'))))) ||
-        _proclaimedGenders.contains(gender);
-
-    if (isAlreadyProclaimed && _flowState == _DeclarationFlowState.intro) {
-      setState(() {
-        _flowState = _DeclarationFlowState.completed;
-      });
+    if (_hasAnyProclaimedToday() || _isGenderProclaimed(gender)) {
+      if (_flowState == _DeclarationFlowState.intro) {
+        setState(() {
+          _flowState = _DeclarationFlowState.flip;
+        });
+      }
     }
   }
 
@@ -111,24 +130,8 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
     final provider = context.read<DeclarationProvider>();
     provider.setGender(newGender);
     setState(() {
-      _cardIndex = 0;
-    });
-
-    final streaks = context.read<StreaksProvider>();
-    final decl = provider.todayDeclaration;
-    final isAlreadyProclaimed = (decl != null &&
-            (streaks.proclaimedDeclarationIds.contains(decl.id.toString()) ||
-                (decl.dayNumber != null &&
-                    (streaks.proclaimedDeclarationIds
-                            .contains('${decl.gender}_${decl.dayNumber}') ||
-                        streaks.proclaimedDeclarationIds.contains(
-                            '${decl.gender}_day_${decl.dayNumber}'))))) ||
-        _proclaimedGenders.contains(newGender);
-
-    setState(() {
-      _flowState = isAlreadyProclaimed
-          ? _DeclarationFlowState.completed
-          : _DeclarationFlowState.intro;
+      // Al cambiar género, mantenerse en la vista de tarjetas
+      _flowState = _DeclarationFlowState.flip;
     });
   }
 
@@ -177,13 +180,32 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
 
   Future<void> _proclaimOnBackend(Declaration declaration, String gender) async {
     HapticFeedback.mediumImpact();
+    final normGender = (gender.toLowerCase().startsWith('h') ||
+            gender.toLowerCase().contains('men'))
+        ? 'hombres'
+        : 'mujeres';
+
     setState(() {
-      _proclaimedGenders.add(gender);
-      _flowState = _DeclarationFlowState.completed;
+      _proclaimedGenders.add(normGender);
+      _flowState = _DeclarationFlowState.flip;
     });
 
     final streaks = context.read<StreaksProvider>();
-    await streaks.proclaimDeclaration(declaration.id.toString());
+    await streaks.proclaimDeclaration(declaration.id.toString(), gender: normGender);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '¡Declaración proclamada en fe! Tu racha fue actualizada.',
+            style: PType.body.copyWith(color: PColors.bone, fontSize: 13),
+          ),
+          backgroundColor: const Color(0xFF1E281E),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   DeclarationItem _buildItem(Declaration d, {int step = 0}) {
@@ -231,37 +253,11 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
     return '$weekday, ${now.day} $month';
   }
 
-  String _wordForIndex(int index) {
-    switch (index) {
-      case 0:
-        return 'one';
-      case 1:
-        return 'two';
-      case 2:
-        return 'three';
-      case 3:
-        return 'four';
-      default:
-        return '${index + 1}';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<DeclarationProvider>();
-    final streaks = context.watch<StreaksProvider>();
     final currentGender = provider.selectedGender;
     final primaryDeclaration = provider.todayDeclaration;
-
-    final isProclaimed = (primaryDeclaration != null &&
-            (streaks.proclaimedDeclarationIds
-                    .contains(primaryDeclaration.id.toString()) ||
-                (primaryDeclaration.dayNumber != null &&
-                    (streaks.proclaimedDeclarationIds.contains(
-                            '${primaryDeclaration.gender}_${primaryDeclaration.dayNumber}') ||
-                        streaks.proclaimedDeclarationIds.contains(
-                            '${primaryDeclaration.gender}_day_${primaryDeclaration.dayNumber}'))))) ||
-        _proclaimedGenders.contains(currentGender);
 
     final state = provider.todayState;
 
@@ -330,17 +326,10 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
       );
     }
 
-    // Build the list of up to 4 declarations for today
-    final List<Declaration> declarationsList =
-        provider.currentDeclarations.isNotEmpty
-            ? provider.currentDeclarations
-            : [primaryDeclaration];
-
-    final int totalDeclarations = declarationsList.length > 4 ? 4 : declarationsList.length;
-    final int activeCardIndex =
-        _cardIndex.clamp(0, totalDeclarations > 0 ? totalDeclarations - 1 : 0);
-    final activeDecl = declarationsList[activeCardIndex];
-    final activeItem = _buildItem(activeDecl, step: activeCardIndex);
+    // Declaración única del día para el género activo
+    final activeDecl = primaryDeclaration;
+    final activeItem = _buildItem(activeDecl, step: 0);
+    final isProclaimed = _isGenderProclaimed(currentGender);
 
     // Pick background photo based on screen state
     final bgPhoto = _flowState == _DeclarationFlowState.intro
@@ -359,8 +348,6 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
             child: _buildFlowBody(
               flowState: _flowState,
               currentGender: currentGender,
-              totalDeclarations: totalDeclarations,
-              activeCardIndex: activeCardIndex,
               activeDecl: activeDecl,
               activeItem: activeItem,
               isProclaimed: isProclaimed,
@@ -374,8 +361,6 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
   Widget _buildFlowBody({
     required _DeclarationFlowState flowState,
     required String currentGender,
-    required int totalDeclarations,
-    required int activeCardIndex,
     required Declaration activeDecl,
     required DeclarationItem activeItem,
     required bool isProclaimed,
@@ -384,21 +369,13 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
       case _DeclarationFlowState.intro:
         return _buildScreen14Intro(
           currentGender: currentGender,
-          totalDeclarations: totalDeclarations,
         );
       case _DeclarationFlowState.flip:
         return _buildScreen15Flip(
           currentGender: currentGender,
-          totalDeclarations: totalDeclarations,
-          activeCardIndex: activeCardIndex,
           activeDecl: activeDecl,
           activeItem: activeItem,
           isProclaimed: isProclaimed,
-        );
-      case _DeclarationFlowState.completed:
-        return _buildScreen18Completed(
-          currentGender: currentGender,
-          activeItem: activeItem,
         );
     }
   }
@@ -408,7 +385,6 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
   // ───────────────────────────────────────────────────────────────────────────
   Widget _buildScreen14Intro({
     required String currentGender,
-    required int totalDeclarations,
   }) {
     return Column(
       key: const ValueKey('screen-14-intro'),
@@ -428,6 +404,8 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
             _GenderSelector(
               selectedGender: currentGender,
               onChanged: _onGenderChanged,
+              isWomenProclaimed: _isGenderProclaimed('mujeres'),
+              isMenProclaimed: _isGenderProclaimed('hombres'),
             ),
             const Spacer(),
             const SizedBox(width: 36),
@@ -460,9 +438,9 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
 
         const SizedBox(height: 14),
 
-        // Subtitle ("Four declarations, drawn from Scripture and written for you. Take them slowly.")
+        // Subtitle
         Text(
-          'Four declarations, drawn from Scripture and written for you. Take them slowly.',
+          'Daily declaration drawn from Scripture and prepared for you. Speak it in faith.',
           style: PType.body.copyWith(
             color: PColors.bone70,
             fontSize: 16,
@@ -470,22 +448,31 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
           ),
         ),
 
-        const SizedBox(height: 28),
+        const SizedBox(height: 24),
 
-        // 4 Progress dashes (inactive)
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(4, (index) {
-            return Container(
-              width: 28,
-              height: 2.5,
-              margin: const EdgeInsets.symmetric(horizontal: 2.5),
-              decoration: BoxDecoration(
-                color: PColors.bone.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(2),
+        // Single declaration pill
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: PColors.glassFill,
+            borderRadius: BorderRadius.circular(PRadius.pill),
+            border: Border.all(color: PColors.hairline),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.auto_awesome_rounded, size: 12, color: Color(0xFFE5C583)),
+              const SizedBox(width: 6),
+              Text(
+                'DAILY DECLARATION',
+                style: PType.eyebrow.copyWith(
+                  color: const Color(0xFFE5C583),
+                  fontSize: 10,
+                  letterSpacing: 1.2,
+                ),
               ),
-            );
-          }),
+            ],
+          ),
         ),
 
         const Spacer(flex: 4),
@@ -497,7 +484,6 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
             HapticFeedback.lightImpact();
             setState(() {
               _flowState = _DeclarationFlowState.flip;
-              _cardIndex = 0;
             });
           },
         ),
@@ -512,23 +498,17 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
   // ───────────────────────────────────────────────────────────────────────────
   Widget _buildScreen15Flip({
     required String currentGender,
-    required int totalDeclarations,
-    required int activeCardIndex,
     required Declaration activeDecl,
     required DeclarationItem activeItem,
     required bool isProclaimed,
   }) {
-    final stepText =
-        '${(activeCardIndex + 1).toString().padLeft(2, '0')} / ${totalDeclarations.toString().padLeft(2, '0')}';
-    final isLastDeclaration = activeCardIndex >= totalDeclarations - 1;
-
     return Column(
-      key: ValueKey('screen-15-flip-$activeCardIndex'),
+      key: ValueKey('screen-15-flip-$currentGender-${activeDecl.id}'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
 
-        // Top Bar: Close (✕) + Step Counter with dashes + Action icons (Copy, Share)
+        // Top Bar: Close (✕) + Center Title + Action icons (Copy, Share)
         Row(
           children: [
             _HeaderIconButton(
@@ -542,7 +522,7 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      stepText,
+                      'TODAY I DECLARE',
                       style: PType.eyebrow.copyWith(
                         letterSpacing: 2.0,
                         fontWeight: FontWeight.w600,
@@ -550,23 +530,15 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
                         fontSize: 11,
                       ),
                     ),
-                    const SizedBox(height: 5),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: List.generate(totalDeclarations, (idx) {
-                        final isPassed = idx <= activeCardIndex;
-                        return Container(
-                          width: 18,
-                          height: 2.0,
-                          margin: const EdgeInsets.symmetric(horizontal: 2.0),
-                          decoration: BoxDecoration(
-                            color: isPassed
-                                ? PColors.bone
-                                : PColors.bone.withValues(alpha: 0.25),
-                            borderRadius: BorderRadius.circular(1),
-                          ),
-                        );
-                      }),
+                    const SizedBox(height: 3),
+                    Text(
+                      activeItem.topic.toUpperCase(),
+                      style: PType.meta.copyWith(
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFFC5A059),
+                        fontSize: 10,
+                      ),
                     ),
                   ],
                 ),
@@ -593,55 +565,61 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
 
         const SizedBox(height: 10),
 
-        // Gender Selector Toggle (WOMEN / MEN)
+        // Gender Selector Toggle (WOMEN / MEN) — Permite alternar entre las dos tarjetas
         Center(
           child: _GenderSelector(
             selectedGender: currentGender,
             onChanged: _onGenderChanged,
+            isWomenProclaimed: _isGenderProclaimed('mujeres'),
+            isMenProclaimed: _isGenderProclaimed('hombres'),
           ),
         ),
 
         const SizedBox(height: 8),
 
-        // Live 3D Flip Card (PFlipCard with 950ms flip, no mirroring)
+        // Live 3D Flip Card — Si ya la proclamó hoy, initialFlipped: true para que no tenga que volver a revelarla
         Expanded(
           child: Center(
             child: PFlipCard(
               key: ValueKey(
-                  'flip-${activeItem.gender}-$activeCardIndex-${activeItem.dayNumber}'),
+                  'flip-${activeItem.gender}-${activeItem.dayNumber}-$isProclaimed'),
               scriptureText: activeItem.scriptureText,
               scriptureRef: activeItem.scriptureRef,
               declarationText: activeItem.declarationText,
-              topic:
-                  '${activeItem.topic} · Declaration ${_wordForIndex(activeCardIndex)}',
+              topic: activeItem.topic,
               scriptureEyebrow: 'SCRIPTURE',
               declarationEyebrow: 'TODAY I DECLARE',
               frontPrompt: 'Tap to read the declaration',
               backPrompt: 'Tap to return to Scripture',
+              initialFlipped: isProclaimed,
             ),
           ),
         ),
 
         const SizedBox(height: 12),
 
-        // Bottom Actions Row: Share icon + Next declaration / Proclaim in faith
+        // Bottom Actions Row: Share icon + Ya la declaré / Ya la declaré ✓
         Row(
           children: [
             _ShareIconButton(onTap: () => _openShareModal(activeItem)),
             const SizedBox(width: 12),
             Expanded(
               child: _PrimaryButton(
-                label: !isLastDeclaration
-                    ? 'Next declaration'
-                    : (isProclaimed
-                        ? 'Today complete ✓'
-                        : 'Proclaim in faith'),
+                label: isProclaimed ? 'Ya la declaré ✓' : 'Ya la declaré',
                 onTap: () {
                   HapticFeedback.lightImpact();
-                  if (!isLastDeclaration) {
-                    setState(() {
-                      _cardIndex = activeCardIndex + 1;
-                    });
+                  if (isProclaimed) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Esta declaración ya fue proclamada hoy en fe.',
+                          style: PType.body.copyWith(color: PColors.bone, fontSize: 13),
+                        ),
+                        backgroundColor: PColors.ink,
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
                   } else {
                     _handleProclaim(activeDecl, currentGender);
                   }
@@ -649,142 +627,6 @@ class _DeclarationsScreenState extends State<DeclarationsScreen> {
               ),
             ),
           ],
-        ),
-
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // SCREEN 18 — Completed 4/4 (photo-declarations)
-  // ───────────────────────────────────────────────────────────────────────────
-  Widget _buildScreen18Completed({
-    required String currentGender,
-    required DeclarationItem activeItem,
-  }) {
-    return Column(
-      key: const ValueKey('screen-18-completed'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-
-        // Top bar: Close (✕) + Gender selector
-        Row(
-          children: [
-            _HeaderIconButton(
-              icon: Icons.close_rounded,
-              onTap: _exitToHome,
-              tooltip: 'Back to home',
-            ),
-            const Spacer(),
-            _GenderSelector(
-              selectedGender: currentGender,
-              onChanged: _onGenderChanged,
-            ),
-            const Spacer(),
-            const SizedBox(width: 36),
-          ],
-        ),
-
-        const Spacer(flex: 3),
-
-        // 4 Completed progress dashes (all active)
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(4, (index) {
-            return Container(
-              width: 32,
-              height: 2.5,
-              margin: const EdgeInsets.symmetric(horizontal: 2.5),
-              decoration: BoxDecoration(
-                color: PColors.bone,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            );
-          }),
-        ),
-
-        const SizedBox(height: 24),
-
-        // Pregare Mark / Brand Logo
-        const PBrandLogo(
-          isLight: true,
-          height: 32,
-        ),
-
-        const SizedBox(height: 18),
-
-        // Eyebrow
-        const PEyebrow('DAY COMPLETE'),
-
-        const SizedBox(height: 12),
-
-        // Title ("You've spoken today's four declarations.")
-        Text(
-          'You\'ve spoken today\'s four declarations.',
-          style: PType.display.copyWith(
-            color: PColors.bone,
-            fontSize: 28,
-            height: 1.25,
-          ),
-        ),
-
-        const SizedBox(height: 14),
-
-        // Subtitle ("Four new ones arrive tomorrow morning. Nothing is lost if you miss a day.")
-        Text(
-          'Four new ones arrive tomorrow morning. Nothing is lost if you miss a day.',
-          style: PType.body.copyWith(
-            color: PColors.bone70,
-            fontSize: 15,
-            height: 1.45,
-          ),
-        ),
-
-        const Spacer(flex: 4),
-
-        // Primary action: Share today's declarations
-        _PrimaryButton(
-          label: 'Share today\'s declarations',
-          onTap: () => _openShareModal(activeItem),
-        ),
-
-        const SizedBox(height: 12),
-
-        // Secondary action: Read the devotional · 2 min
-        _SecondaryOutlinedButton(
-          label: 'Read the devotional · 2 min',
-          onTap: () {
-            MainShell.setTab(context, 0);
-          },
-        ),
-
-        const SizedBox(height: 14),
-
-        // Tertiary link: Review / Read them again
-        Center(
-          child: PInteractive(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              setState(() {
-                _cardIndex = 0;
-                _flowState = _DeclarationFlowState.flip;
-              });
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-              child: Text(
-                'Read them again',
-                style: PType.meta.copyWith(
-                  color: PColors.bone70,
-                  fontSize: 13,
-                  decoration: TextDecoration.underline,
-                  decorationColor: PColors.bone50,
-                ),
-              ),
-            ),
-          ),
         ),
 
         const SizedBox(height: 20),
@@ -837,10 +679,14 @@ class _GenderSelector extends StatelessWidget {
   const _GenderSelector({
     required this.selectedGender,
     required this.onChanged,
+    this.isWomenProclaimed = false,
+    this.isMenProclaimed = false,
   });
 
   final String selectedGender;
   final ValueChanged<String> onChanged;
+  final bool isWomenProclaimed;
+  final bool isMenProclaimed;
 
   @override
   Widget build(BuildContext context) {
@@ -851,6 +697,7 @@ class _GenderSelector extends StatelessWidget {
       required String value,
       required IconData icon,
       required bool isSelected,
+      required bool isProclaimed,
     }) {
       return PInteractive(
         onTap: () => onChanged(value),
@@ -885,6 +732,14 @@ class _GenderSelector extends StatelessWidget {
                   letterSpacing: 0.8,
                 ),
               ),
+              if (isProclaimed) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.check_rounded,
+                  size: 13,
+                  color: isSelected ? const Color(0xFF1B5E20) : const Color(0xFF81C784),
+                ),
+              ],
             ],
           ),
         ),
@@ -906,6 +761,7 @@ class _GenderSelector extends StatelessWidget {
             value: 'mujeres',
             icon: Icons.female_rounded,
             isSelected: !isMen,
+            isProclaimed: isWomenProclaimed,
           ),
           const SizedBox(width: 4),
           buildPill(
@@ -913,6 +769,7 @@ class _GenderSelector extends StatelessWidget {
             value: 'hombres',
             icon: Icons.male_rounded,
             isSelected: isMen,
+            isProclaimed: isMenProclaimed,
           ),
         ],
       ),
@@ -1302,34 +1159,3 @@ class _PrimaryButton extends StatelessWidget {
   }
 }
 
-class _SecondaryOutlinedButton extends StatelessWidget {
-  const _SecondaryOutlinedButton({required this.label, required this.onTap});
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return PInteractive(
-      onTap: onTap,
-      pressedScale: 0.985,
-      hoverScale: 1.01,
-      child: Container(
-        width: double.infinity,
-        height: 52,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: PColors.glassFill,
-          borderRadius: BorderRadius.circular(PRadius.pill),
-          border: Border.all(color: PColors.hairline),
-        ),
-        child: Text(
-          label,
-          style: PType.uiStrong.copyWith(
-            color: PColors.bone,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
-  }
-}

@@ -37,7 +37,9 @@ class _LoginScreenState extends State<LoginScreen> {
         context.read<StreaksProvider>().loadStreak();
         context.read<StreaksProvider>().loadBadges();
         context.read<BibleProvider>().loadHighlights();
-        Navigator.of(context).pop();
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
       }
     }
   }

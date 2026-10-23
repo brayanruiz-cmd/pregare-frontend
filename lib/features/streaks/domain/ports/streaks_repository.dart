@@ -8,7 +8,8 @@ abstract class StreaksRepository {
   Future<MonthActivity> getMonthActivity({int? year, int? month});
   Future<List<UserBadgeModel>> getBadges();
   Future<bool> completeDevotional(String devotionalId);
-  Future<bool> proclaimDeclaration(String declarationId);
+  Future<bool> proclaimDeclaration(String declarationId, {String? gender});
   Future<List<String>> getProclaimedDeclarations();
+  Future<List<String>> getTodayProclaimedGenders();
 }
 

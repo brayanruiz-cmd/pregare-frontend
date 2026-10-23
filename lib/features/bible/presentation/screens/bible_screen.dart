@@ -1159,7 +1159,7 @@ class _BibleReaderScreenState extends State<BibleReaderScreen> {
               border: (isTarget && widget.isFromDevotional)
                   ? Border.all(color: const Color(0xFFB58D3D), width: 1.8)
                   : (isHighlighted
-                      ? Border(left: BorderSide(color: colorOption.accent, width: 3.5))
+                      ? Border.all(color: colorOption.accent, width: 1.5)
                       : (isTarget ? Border.all(color: const Color(0x60B58D3D), width: 1.2) : null)),
             ),
             child: Column(

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/state/async_state.dart';
 import '../../../../core/theme/tokens.dart';
+import '../../../../core/theme/app_breakpoints.dart';
 import '../../../../core/ui/organisms/main_shell.dart';
 import '../../../../core/ui/primitives/primitives.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -750,6 +751,9 @@ class _TopicsHeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final topicsProvider = context.watch<TopicsProvider>();
     final topics = topicsProvider.currentTopics;
+    final isDesktop = AppBreakpoints.isDesktop(context);
+    final isTablet = AppBreakpoints.isTablet(context);
+    final cardHeight = isDesktop ? 330.0 : (isTablet ? 250.0 : 195.0);
 
     // Empty state: no topics created yet
     if (topics.isEmpty) {
@@ -760,7 +764,7 @@ class _TopicsHeroCard extends StatelessWidget {
         tooltip: 'Explorar series de YouTube',
         builder: (context, isHovered, isPressed) => Container(
           width: double.infinity,
-          height: 190,
+          height: cardHeight,
           decoration: BoxDecoration(
             color: isHovered ? PColors.glassFill.withValues(alpha: 0.20) : PColors.glassFill,
             borderRadius: BorderRadius.circular(PRadius.card),
@@ -775,7 +779,7 @@ class _TopicsHeroCard extends StatelessWidget {
               Icon(
                 Icons.ondemand_video_outlined,
                 color: isHovered ? PColors.bone : PColors.bone45,
-                size: 36,
+                size: isDesktop ? 44 : 36,
               ),
               const SizedBox(height: 12),
               Text(
@@ -799,152 +803,345 @@ class _TopicsHeroCard extends StatelessWidget {
             ? RegExp(r'(?:watch\?v=|youtu\.be\/|shorts\/)([^"&?\/\s]{11})')
                 .firstMatch(topic.youtubeUrl!)?.group(1)
             : null);
-    final thumbnailUrl =
+    final maxResThumbnailUrl =
+        videoId != null ? 'https://img.youtube.com/vi/$videoId/maxresdefault.jpg' : null;
+    final hqThumbnailUrl =
         videoId != null ? 'https://img.youtube.com/vi/$videoId/hqdefault.jpg' : null;
 
     return PInteractive(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TopicDetailScreen(topic: topic)),
       ),
-      hoverScale: 1.01,
-      pressedScale: 0.985,
+      hoverScale: 1.008,
+      pressedScale: 0.99,
       tooltip: 'Ver video: ${topic.title}',
-      builder: (context, isHovered, isPressed) => ClipRRect(
-        borderRadius: BorderRadius.circular(PRadius.card),
-        child: Stack(
-          children: [
-            // ── Thumbnail or fallback ────────────────────────────────────
-            SizedBox(
-              width: double.infinity,
-              height: 190,
-              child: thumbnailUrl != null
-                  ? Image.network(
-                      thumbnailUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (ctx, e, st) => Container(color: PColors.inkDeep),
-                    )
-                  : Container(color: PColors.inkDeep),
+      builder: (context, isHovered, isPressed) => AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(PRadius.card),
+          border: Border.all(
+            color: isHovered ? const Color(0x99C5A059) : const Color(0x33FFFFFF),
+            width: isHovered ? 1.4 : 1.0,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDesktop ? 0.45 : 0.25),
+              blurRadius: isDesktop ? 24 : 14,
+              offset: const Offset(0, 8),
             ),
+            if (isHovered && isDesktop)
+              BoxShadow(
+                color: const Color(0xFFC5A059).withValues(alpha: 0.25),
+                blurRadius: 30,
+                offset: const Offset(0, 4),
+              ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(PRadius.card),
+          child: Stack(
+            children: [
+              // ── High Definition Thumbnail with fallback ────────────────
+              SizedBox(
+                width: double.infinity,
+                height: cardHeight,
+                child: maxResThumbnailUrl != null
+                    ? Image.network(
+                        maxResThumbnailUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (ctx, e, st) => hqThumbnailUrl != null
+                            ? Image.network(
+                                hqThumbnailUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (ctx2, e2, st2) =>
+                                    Container(color: PColors.inkDeep),
+                              )
+                            : Container(color: PColors.inkDeep),
+                      )
+                    : Container(color: PColors.inkDeep),
+              ),
 
-            // ── Gradient scrim ───────────────────────────────────────────
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      PColors.ink.withValues(alpha: isHovered ? 0.12 : 0.20),
-                      PColors.ink.withValues(alpha: isHovered ? 0.72 : 0.80),
+              // ── Multi-layer Cinematic Gradient Scrim ───────────────────
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        PColors.ink.withValues(alpha: isHovered ? 0.18 : 0.28),
+                        PColors.ink.withValues(alpha: isHovered ? 0.40 : 0.50),
+                        PColors.ink.withValues(alpha: isHovered ? 0.88 : 0.94),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+              if (isDesktop)
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          PColors.ink.withValues(alpha: 0.92),
+                          PColors.ink.withValues(alpha: 0.60),
+                          PColors.ink.withValues(alpha: 0.05),
+                        ],
+                        stops: const [0.0, 0.50, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // ── Channel badge (top-left) ───────────────────────────────
+              Positioned(
+                top: isDesktop ? 20 : 12,
+                left: isDesktop ? 24 : 12,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isDesktop ? 12 : 10,
+                    vertical: isDesktop ? 6 : 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xDD141310),
+                    borderRadius: BorderRadius.circular(PRadius.chip),
+                    border: Border.all(color: const Color(0x38FFFFFF), width: 0.8),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFF0000),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x99FF0000),
+                              blurRadius: 6,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'PREGARE · YouTube Series',
+                        style: PType.meta.copyWith(
+                          color: PColors.bone,
+                          fontSize: isDesktop ? 11 : 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-            ),
 
-            // ── Channel badge (top-left) ─────────────────────────────────
-            Positioned(
-              top: 12,
-              left: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: PColors.ink.withValues(alpha: 0.75),
-                  borderRadius: BorderRadius.circular(PRadius.chip),
-                  border: Border.all(color: PColors.hairline),
+              // ── Duration badge (top-right) ─────────────────────────────
+              Positioned(
+                top: isDesktop ? 20 : 12,
+                right: isDesktop ? 24 : 12,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isDesktop ? 12 : 8,
+                    vertical: isDesktop ? 6 : 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xDD141310),
+                    borderRadius: BorderRadius.circular(PRadius.chip),
+                    border: Border.all(color: const Color(0x38FFFFFF), width: 0.8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.access_time_rounded,
+                        size: isDesktop ? 13 : 11,
+                        color: const Color(0xFFE5C583),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '${topic.videoDurationMinutes} min',
+                        style: PType.meta.copyWith(
+                          color: PColors.bone,
+                          fontSize: isDesktop ? 11 : 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Row(
+              ),
+
+              // ── Editorial Content (bottom-left) ────────────────────────
+              Positioned(
+                left: isDesktop ? 28 : 16,
+                right: isDesktop ? 120 : 56,
+                bottom: isDesktop ? 26 : 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFFF0000),
-                        shape: BoxShape.circle,
+                    if (topic.tag.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0x28C5A059),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0x55C5A059), width: 0.8),
+                        ),
+                        child: Text(
+                          topic.tag.toUpperCase(),
+                          style: GoogleFonts.hankenGrotesk(
+                            color: const Color(0xFFE5C583),
+                            fontSize: isDesktop ? 11 : 9.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 5),
+                      SizedBox(height: isDesktop ? 10 : 6),
+                    ],
                     Text(
-                      'PREGARE · YouTube',
-                      style: PType.meta.copyWith(
+                      topic.title,
+                      style: GoogleFonts.newsreader(
                         color: PColors.bone,
-                        fontSize: 10,
+                        fontSize: isDesktop ? 28 : 16,
                         fontWeight: FontWeight.w600,
+                        height: 1.15,
+                        shadows: const [
+                          Shadow(
+                            color: Colors.black,
+                            blurRadius: 16,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    if (isDesktop &&
+                        (topic.subtitle != null && topic.subtitle!.trim().isNotEmpty)) ...[
+                      const SizedBox(height: 8),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 640),
+                        child: Text(
+                          topic.subtitle!.trim(),
+                          style: GoogleFonts.hankenGrotesk(
+                            color: PColors.bone70,
+                            fontSize: 13.5,
+                            height: 1.35,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                    if (isDesktop) ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isHovered
+                                  ? const Color(0xFFC5A059)
+                                  : const Color(0x33FFFFFF),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isHovered
+                                    ? const Color(0xFFE5C583)
+                                    : const Color(0x55FFFFFF),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 16,
+                                  color: isHovered ? PColors.ink : PColors.bone,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Ver enseñanza',
+                                  style: GoogleFonts.hankenGrotesk(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: isHovered ? PColors.ink : PColors.bone,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
-            ),
 
-            // ── Duration badge (top-right) ───────────────────────────────
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: PColors.ink.withValues(alpha: 0.75),
-                  borderRadius: BorderRadius.circular(PRadius.chip),
-                  border: Border.all(color: PColors.hairline),
-                ),
-                child: Text(
-                  '${topic.videoDurationMinutes} min',
-                  style: PType.meta.copyWith(color: PColors.bone, fontSize: 10),
-                ),
-              ),
-            ),
-
-            // ── Content (bottom) ─────────────────────────────────────────
-            Positioned(
-              left: 16,
-              right: 56,
-              bottom: 16,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (topic.tag.isNotEmpty)
-                    Text(
-                      topic.tag.toUpperCase(),
-                      style: PType.eyebrow.copyWith(color: PColors.clay, fontSize: 10),
+              // ── Play button (bottom-right) ─────────────────────────────
+              Positioned(
+                right: isDesktop ? 28 : 14,
+                bottom: isDesktop ? 28 : 14,
+                child: AnimatedScale(
+                  scale: isHovered ? 1.08 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: isDesktop ? 54 : 38,
+                    height: isDesktop ? 54 : 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isHovered
+                          ? const Color(0xFFC5A059)
+                          : const Color(0xDD141310),
+                      border: Border.all(
+                        color: isHovered
+                            ? const Color(0xFFFFF2D0)
+                            : const Color(0x66FFFFFF),
+                        width: isDesktop ? 1.8 : 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (isHovered ? const Color(0xFFC5A059) : Colors.black)
+                              .withValues(alpha: isHovered ? 0.45 : 0.35),
+                          blurRadius: isDesktop ? 18 : 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                  const SizedBox(height: 4),
-                  Text(
-                    topic.title,
-                    style: PType.uiStrong.copyWith(
-                      color: PColors.bone,
-                      fontSize: 15,
-                      height: 1.3,
+                    child: Icon(
+                      Icons.play_arrow_rounded,
+                      color: isHovered ? PColors.ink : PColors.bone,
+                      size: isDesktop ? 30 : 22,
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
-            ),
-
-            // ── Play button (bottom-right) ───────────────────────────────
-            Positioned(
-              right: 14,
-              bottom: 14,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isHovered ? PColors.bone : PColors.ink.withValues(alpha: 0.75),
-                  border: Border.all(color: PColors.bone, width: 1.2),
-                ),
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  color: isHovered ? PColors.ink : PColors.bone,
-                  size: 22,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

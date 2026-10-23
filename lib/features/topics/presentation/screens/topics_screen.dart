@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/state/async_state.dart';
 import '../../../../core/theme/tokens.dart';
@@ -163,6 +164,8 @@ class _ExploreTabRow extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Topics tab — loaded from TopicsProvider
+// Featured card = topics[0] from DB. Numbered list = all topics from DB.
+// Zero hardcoded content displayed to the user.
 // ─────────────────────────────────────────────────────────────────────────────
 class _TopicsContent extends StatelessWidget {
   const _TopicsContent({required this.onTopicTap});
@@ -173,10 +176,11 @@ class _TopicsContent extends StatelessWidget {
     final provider = context.watch<TopicsProvider>();
     final topics = provider.currentTopics;
 
-    if (provider.topics is AsyncLoading) {
+    if (provider.topics is AsyncLoading && topics.isEmpty) {
       return const Center(child: CircularProgressIndicator(color: PColors.bone));
     }
-    if (provider.topics is AsyncError) {
+
+    if (provider.topics is AsyncError && topics.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -191,6 +195,7 @@ class _TopicsContent extends StatelessWidget {
         ),
       );
     }
+
     if (topics.isEmpty) {
       return const Center(child: PEyebrow('No topics available'));
     }
@@ -202,56 +207,79 @@ class _TopicsContent extends StatelessWidget {
       color: PColors.bone,
       backgroundColor: PColors.ink,
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: PSpace.navClearance),
         children: [
-          // ── Featured topic card ───────────────────────────────────────────
+          // ── Featured topic card (topics[0] from DB) ───────────────────────
           PInteractive(
             onTap: () => onTopicTap(featured),
             pressedScale: 0.99,
             builder: (context, isHovered, isPressed) {
               return ClipRRect(
-                borderRadius: BorderRadius.circular(PRadius.tile),
+                borderRadius: BorderRadius.circular(20),
                 child: Stack(
                   children: [
                     SizedBox(
-                      height: 180,
+                      height: 200,
                       width: double.infinity,
                       child: Image.asset(
                         'assets/photo-topics.jpg',
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
+                        errorBuilder: (context, error, _) =>
                             Container(color: PColors.inkDeep),
                       ),
                     ),
                     Positioned.fill(
                       child: DecoratedBox(
-                        decoration: BoxDecoration(gradient: PScrims.home),
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: [0.0, 0.55, 1.0],
+                            colors: [
+                              Color(0xE00E0E0C),
+                              Color(0x990E0E0C),
+                              Color(0x300E0E0C),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                     Positioned(
-                      left: 20,
-                      right: 20,
-                      bottom: 20,
-                      top: 20,
+                      left: 22,
+                      right: 22,
+                      top: 22,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const PEyebrow('This week'),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(featured.title,
-                                  style: PType.display.copyWith(fontSize: 28)),
-                              const SizedBox(height: 6),
-                              Text(
-                                featured.description.length > 80
-                                    ? '${featured.description.substring(0, 80).trim()}…'
-                                    : featured.description,
-                                style: PType.body.copyWith(fontSize: 13),
-                              ),
-                            ],
+                          Text(
+                            'THIS WEEK',
+                            style: PType.eyebrowSmall.copyWith(
+                              color: PColors.bone70,
+                              letterSpacing: 2.0,
+                            ),
                           ),
+                          const SizedBox(height: 10),
+                          Text(
+                            featured.title,
+                            style: GoogleFonts.newsreader(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w400,
+                              color: PColors.bone,
+                              height: 1.1,
+                            ),
+                          ),
+                          if (featured.subtitle?.isNotEmpty ?? false) ...[const SizedBox(height: 8),
+                            Text(
+                              featured.subtitle!,
+                              style: GoogleFonts.hankenGrotesk(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w400,
+                                color: PColors.bone70,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -260,97 +288,79 @@ class _TopicsContent extends StatelessWidget {
               );
             },
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 26),
 
-          // ── Numbered topic grid (Screen 19) ────────────────────────────────
-          const SizedBox(height: 28),
-          const PEyebrow('Topics'),
-          const SizedBox(height: 14),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: topics.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.32,
-            ),
-            itemBuilder: (context, index) {
-              final topic = topics[index];
+          // ── Numbered editorial list — all topics from DB ───────────────────
+          Column(
+            children: topics.asMap().entries.map((entry) {
+              final index = entry.key;
+              final topic = entry.value;
               final numStr = (index + 1).toString().padLeft(2, '0');
-              final count = topic.supportTips.isNotEmpty
-                  ? topic.supportTips.length
-                  : 4;
+              final count = topic.supportTips.length;
+              final isLast = index == topics.length - 1;
 
-              return PInteractive(
-                onTap: () => onTopicTap(topic),
-                builder: (context, isHovered, isPressed) => Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isHovered
-                        ? PColors.glassFill.withValues(alpha: 0.22)
-                        : PColors.glassFill,
-                    borderRadius: BorderRadius.circular(PRadius.panel),
-                    border: Border.all(
-                      color: isHovered ? PColors.bone50 : PColors.hairline,
-                      width: 1.0,
+              return Column(
+                children: [
+                  PInteractive(
+                    onTap: () => onTopicTap(topic),
+                    pressedScale: 0.99,
+                    builder: (context, isHovered, isPressed) {
+                      return Container(
+                        color: isHovered
+                            ? PColors.bone.withValues(alpha: 0.04)
+                            : Colors.transparent,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 18,
+                          horizontal: 4,
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 34,
+                              child: Text(
+                                numStr,
+                                style: GoogleFonts.hankenGrotesk(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                  color: PColors.bone45,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                topic.title,
+                                style: GoogleFonts.newsreader(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w400,
+                                  color: isHovered
+                                      ? PColors.bone
+                                      : PColors.bone.withValues(alpha: 0.95),
+                                ),
+                              ),
+                            ),
+                            if (count > 0)
+                              Text(
+                                '$count ${count == 1 ? 'topic' : 'topics'}',
+                                style: GoogleFonts.hankenGrotesk(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                  color: PColors.bone45,
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  if (!isLast)
+                    const Divider(
+                      color: PColors.hairline,
+                      height: 1,
+                      thickness: 0.5,
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            numStr,
-                            style: PType.meta.copyWith(
-                              color: PColors.bone45,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            '$count',
-                            style: PType.meta.copyWith(
-                              color: PColors.clay,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            topic.title,
-                            style: PType.uiStrong.copyWith(
-                              fontSize: 15,
-                              color: PColors.bone,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            topic.tag.isNotEmpty ? topic.tag : 'Topic',
-                            style: PType.meta.copyWith(
-                              fontSize: 10,
-                              color: PColors.bone55,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+                ],
               );
-            },
+            }).toList(),
           ),
         ],
       ),
@@ -835,10 +845,6 @@ class _DevotionalDetailScreenState extends State<_DevotionalDetailScreen> {
               padding: const EdgeInsets.only(left: 16, top: 12, bottom: 12, right: 12),
               decoration: BoxDecoration(
                 color: PColors.ink.withValues(alpha: 0.03),
-                borderRadius: const BorderRadius.only(
-                  topRight: Radius.circular(8),
-                  bottomRight: Radius.circular(8),
-                ),
                 border: const Border(left: BorderSide(color: PColors.ink, width: 2.5)),
               ),
               child: Column(

@@ -153,6 +153,9 @@ class _DevotionalsAccordion extends StatelessWidget {
           initialChapter: chapter,
           initialVerse: verseNumber,
           targetVersion: 'KJV',
+          devotionalTitle: devotional.title,
+          devotionalDay: devotional.day,
+          isFromDevotional: true,
         ),
       ),
     );
@@ -229,10 +232,6 @@ class _DevotionalsAccordion extends StatelessWidget {
                         color: verseRef.isNotEmpty
                             ? Colors.white.withValues(alpha: 0.04)
                             : Colors.transparent,
-                        borderRadius: const BorderRadius.only(
-                          topRight: Radius.circular(6),
-                          bottomRight: Radius.circular(6),
-                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

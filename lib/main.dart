@@ -26,25 +26,51 @@ import 'features/admin/presentation/providers/admin_provider.dart';
 import 'features/auth/infrastructure/adapters/user_preferences_api_adapter.dart';
 import 'core/infrastructure/offline/offline_manager.dart';
 
+import 'features/auth/domain/models/auth_session.dart';
+import 'features/auth/domain/ports/auth_repository.dart';
+import 'core/router/app_router.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await OfflineManager.instance.init();
-  runApp(const PregareApp());
+
+  // BASE_URL_OVERRIDE is passed via --dart-define=BASE_URL_OVERRIDE=http://...
+  // Falls back to 127.0.0.1 (not localhost) for Chrome compatibility.
+  const baseUrl = String.fromEnvironment(
+    'BASE_URL_OVERRIDE',
+    defaultValue: 'http://127.0.0.1:3000',
+  );
+  final httpClient = PregareHttpClient(baseUrl: baseUrl);
+  final authRepository = AuthApiAdapter(httpClient: httpClient);
+
+  // Restore stored session and update token in httpClient before any screen/provider runs
+  final initialSession = await authRepository.getStoredSession();
+  if (initialSession == null) {
+    // If not logged in, clear offline cache so no stale data from past sessions appears
+    await OfflineManager.instance.clear();
+  }
+
+  runApp(PregareApp(
+    httpClient: httpClient,
+    authRepository: authRepository,
+    initialSession: initialSession,
+  ));
 }
 
 class PregareApp extends StatelessWidget {
-  const PregareApp({super.key});
+  const PregareApp({
+    super.key,
+    required this.httpClient,
+    required this.authRepository,
+    this.initialSession,
+  });
+
+  final PregareHttpClient httpClient;
+  final AuthRepository authRepository;
+  final AuthSession? initialSession;
 
   @override
   Widget build(BuildContext context) {
-    // BASE_URL_OVERRIDE is passed via --dart-define=BASE_URL_OVERRIDE=http://...
-    // Falls back to 127.0.0.1 (not localhost) for Chrome compatibility.
-    const baseUrl = String.fromEnvironment(
-      'BASE_URL_OVERRIDE',
-      defaultValue: 'http://127.0.0.1:3000',
-    );
-    final httpClient = PregareHttpClient(baseUrl: baseUrl);
-    final authRepository = AuthApiAdapter(httpClient: httpClient);
     final homeRepository = HomeApiAdapter(httpClient: httpClient);
     final bibleRepository = BibleApiAdapter(httpClient: httpClient);
     final declarationsRepository = DeclarationsApiAdapter(httpClient: httpClient);
@@ -61,13 +87,16 @@ class PregareApp extends StatelessWidget {
           create: (_) => OnboardingProvider(httpClient: httpClient),
         ),
         ChangeNotifierProvider(
-          create: (_) => AuthProvider(repository: authRepository),
+          create: (_) => AuthProvider(
+            repository: authRepository,
+            initialSession: initialSession,
+          ),
         ),
         ChangeNotifierProvider(
           create: (_) => HomeProvider(repository: homeRepository),
         ),
         ChangeNotifierProvider(
-          create: (_) => BibleProvider(repository: bibleRepository)..loadHighlights(),
+          create: (_) => BibleProvider(repository: bibleRepository),
         ),
         ChangeNotifierProvider(
           create: (_) => DeclarationProvider(repository: declarationsRepository),
@@ -79,7 +108,10 @@ class PregareApp extends StatelessWidget {
           create: (_) => TopicsProvider(repository: topicsRepository),
         ),
         ChangeNotifierProvider(
-          create: (_) => StreaksProvider(repository: streaksRepository),
+          create: (_) => StreaksProvider(
+            repository: streaksRepository,
+            autoload: initialSession != null,
+          ),
         ),
         ChangeNotifierProvider(
           create: (_) => NotificationsProvider(repository: notificationsRepository),
@@ -93,6 +125,7 @@ class PregareApp extends StatelessWidget {
         title: 'Pregare',
         debugShowCheckedModeBanner: false,
         theme: PTheme.dark,
+        onGenerateRoute: AppRouter.generateRoute,
         home: Consumer<OnboardingProvider>(
           builder: (context, onboarding, _) {
             return onboarding.isCompleted
